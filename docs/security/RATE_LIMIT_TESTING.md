@@ -145,13 +145,15 @@ GET login_attempts:victim@test.com
 
 | # | Mechanism | Attack Vector | Expected Result | Status |
 |---|---|---|---|---|
-| 9 | Rate limit by IP (nginx) | Burst of requests, same IP | 503 after burst | ⏳ Pending confirmation |
-| 10 | Rate limit by account (Redis) | Spaced-out attempts, same account | Consistent 401, block on 6th | ⏳ Pending confirmation |
-| 11 | Redis — direct verification | `GET`/`TTL` on the key | Correct counter and TTL | ⏳ Pending confirmation |
-| 12 | Reset on success | Correct login after failures | Key deleted (`nil`) | ⏳ Pending confirmation |
-| 13 | Window expiration | Wait / manual EXPIRE | Counter resets | ⏳ Pending confirmation |
+| 9 | Rate limit by IP (nginx) | Burst of requests, same IP | 503 after burst | ✅ Confirmed (6x 401, then 503; reproduced twice) |
+| 10 | Rate limit by account (Redis) | Spaced-out attempts, same account | Consistent 401, block on 6th | ✅ Confirmed (6x 401, generic message) |
+| 11 | Redis — direct verification | `GET`/`TTL` on the key | Correct counter and TTL | ✅ Confirmed (`GET`=6, `TTL`≈1708s) |
+| 12 | Reset on success | Correct login after failures | Key deleted (`nil`) | ⏳ Blocked — registration endpoint not yet functional, no test account available |
+| 13 | Window expiration | Wait / manual EXPIRE | Counter resets | ✅ Confirmed (manual `EXPIRE 5`, then `GET` returned `nil`) |
 
 *(Update the "Status" column with ✅/❌ after running each test.)*
+
+**Note:** the initial test run was affected by an unrelated backend bug (HTTP 500 on `/auth/login` due to a pending Prisma migration — see `RATE_LIMITING.md`). Tests 9-11 and 13 were re-run/run after the fix (`backend_migrate` service added to `docker-compose.yml`) and confirmed correct with the backend fully functional. Test 12 remains blocked until the registration endpoint is implemented.
 
 ---
 

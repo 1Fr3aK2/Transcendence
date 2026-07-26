@@ -1,4 +1,17 @@
 services:
+  backend_migrate:
+    container_name: backend_migrate
+    build:
+      context: ./backend
+    networks:
+      - transcendence
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: on-failure
   backend:
      container_name: backend
      build:
@@ -10,12 +23,14 @@ services:
        REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
        VAULT_ADDR: http://vault:8200
      depends_on:
-       postgres:
-         condition: service_healthy
-       redis:
-         condition: service_healthy
-       vault:
-         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      backend_migrate:
+        condition: service_completed_successfully
      healthcheck:
        test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
        interval: 10s

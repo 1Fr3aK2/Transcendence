@@ -1,6 +1,7 @@
 
     #limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+     limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
 
     
     server {
@@ -11,7 +12,7 @@
 
         location / {
             return 301 https://$host$request_uri;
-        }
+        } 
         
         location /stub_status {
             stub_status on;
@@ -53,7 +54,13 @@
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             limit_req zone=login burst=5 nodelay;
+        }
 
+        location /forum {
+            proxy_pass http://backend:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            limit_req zone=forum burst=5 nodelay;
         }
 
         location /ws {

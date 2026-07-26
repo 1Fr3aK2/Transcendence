@@ -108,9 +108,18 @@ async login(dto: LoginDto) {
 
 **Registered in `backend/src/auth/auth.module.ts`:** `RateLimiterService` added to `providers`.
 
-## Bug found during testing (unrelated to rate limiting)
+## Bug found during testing (unrelated to rate limiting) — resolved
 
-While testing the IP rate limit, `/auth/login` was returning **HTTP 500** even for a single isolated request, instead of the expected 401 for invalid credentials. Reported to the backend teammate — root cause not yet confirmed fixed; a later test run no longer hit the 500, but this should still be verified explicitly via backend logs (`docker logs backend`).
+While testing the IP rate limit, `/auth/login` was returning **HTTP 500** even for a single isolated request, instead of the expected 401 for invalid credentials. Root cause identified via `docker logs backend`: a pending Prisma migration (`20260719190112_add_forum_and_moderation`) had never been applied to the database, so required tables were missing. Fixed by adding a `backend_migrate` service to `docker-compose.yml` — same image as the backend, runs `npx prisma migrate deploy` and exits; `backend` now depends on it with `condition: service_completed_successfully` (same pattern already used for `vault_init`). This guarantees migrations are applied automatically on every `docker compose up`, without anyone needing to remember to run them manually.
+
+## End-to-end validation — confirmed
+
+After the `backend_migrate` fix, both mechanisms were re-tested with the backend fully functional (no more 500s):
+
+- **IP rate limit:** 6 requests get `401` (reach the backend, invalid credentials), remaining requests get `503` (rejected by nginx). Reproduced twice with identical results.
+- **Account rate limit:** 6 spaced-out requests (7s apart) for the same account all return `401` (generic message, as intended). Verified directly in Redis that the counter and TTL are correct — `GET login_attempts:<email>` returned `6`, `TTL` returned a value consistent with the elapsed time since the first attempt.
+
+Both mechanisms are confirmed working correctly end-to-end.
 
 ## Testing after implementation
 
