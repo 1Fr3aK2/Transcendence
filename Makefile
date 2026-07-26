@@ -17,7 +17,7 @@ deps:
 	cd backend && npm install
 	cd backend && npx prisma generate
 
-build: clean
+build:
 	@echo "Building images..."
 	$(SCRIPT_CERTS)
 	$(COMPOSE) build
@@ -64,4 +64,4 @@ exec:
 re: fclean deps build up
 	@echo "Restarting all the containers..."
 
-.PHONY: all build deps up down clean fclean logs exec re
+.PHONY: all build deps up down dev clean fclean logs exec re
