@@ -1,7 +1,7 @@
 
     #limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
-     limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
+    limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
 
     
     server {
@@ -31,11 +31,14 @@
         server_name  ${SERVER_NAME};
 
         ssl_protocols ${SSL_PROTOCOLS};
-
         ssl_certificate   ${SSL_CERT_FILE};
         ssl_certificate_key ${SSL_CERT_KEY_FILE};
 
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         modsecurity on;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
         location / {
             proxy_pass http://frontend:5173;
