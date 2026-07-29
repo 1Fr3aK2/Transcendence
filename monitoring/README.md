@@ -107,7 +107,46 @@ providers:
 
 `infra-status.json` (same folder) defines the "Infra Status" dashboard:
 up/down stat panels for each service (`up{job="..."}`), plus timeseries panels
-for request rate, active connections, and backend process CPU/memory.
+for request rate, active connections, backend process CPU/memory, and custom
+backend request metrics (see below).
+
+## Custom backend metrics
+
+Beyond the default process metrics (`process_cpu_seconds_total`,
+`process_resident_memory_bytes`), the backend exposes application-level metrics
+via a global NestJS interceptor (`metrics.interceptor.ts`), registered through
+`APP_INTERCEPTOR` in `metrics.module.ts`:
+
+- **`http_requests_total`** (Counter) — total requests, labeled by `method`,
+  `route`, and `status_code`.
+- **`http_request_duration_seconds`** (Histogram) — request duration, same
+  labels, with buckets from 10ms to 5s.
+
+The interceptor uses the matched route pattern (`request.route.path`, e.g.
+`/users/:id`) rather than the raw URL, to avoid one metric series per unique
+resource ID. Both `next` and `error` paths are covered, so failed requests are
+counted too.
+
+Two dashboard panels consume these metrics:
+- **Backend - Requests/sec by route**: `sum(rate(http_requests_total[1m])) by (route)`
+- **Backend - p95 Latency by route**:
+  `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))`
+
+## Grafana access security
+
+- `GF_AUTH_ANONYMOUS_ENABLED: "false"` is set explicitly in `docker-compose.yml`
+  (matches Grafana's default, but made explicit so it can't be silently changed
+  by a future edit).
+- Grafana is not exposed on a host port — reachable only through the Nginx
+  reverse proxy over HTTPS, same as Prometheus.
+- Admin credentials (`GF_SECURITY_ADMIN_USER`/`PASSWORD`) are set via `.env`,
+  not left as Grafana's defaults.
+- Grafana is intentionally kept separate from the application's own user auth
+  system — it's an internal ops tool for the team, not user-facing, so a
+  single shared admin account is appropriate here rather than per-user
+  accounts.
+- Validated by loading `/grafana/` in an incognito window: redirects to the
+  login page, confirming no anonymous access.
 
 ## Alerting
 
@@ -136,6 +175,12 @@ the config was correct:
    Fixed by correcting the volume path. Confirmed via
    `docker compose exec grafana ls -la /etc/grafana/provisioning/dashboards`.
 
+3. **Backend 502 after adding the interceptor**: TypeScript failed to build
+   with `TS2306: File '.../metrics.interceptor.ts' is not a module`, which
+   left the backend container failing to start (surfaced as a 502 through
+   Nginx). Diagnosed via `docker compose logs backend`, which pointed
+   directly at the compile error rather than the symptom.
+
 ## How to test
 
 1. `docker compose up -d` and confirm `grafana` and `prometheus` are healthy.
@@ -146,6 +191,11 @@ the config was correct:
    (proves `dashboard.yml` + `infra-status.json` were read).
 5. Open the dashboard: 4 status panels should read UP/green, and the
    timeseries panels below should show data (not "No data").
+6. Generate some traffic against the backend (e.g. hit `/forum`), then check
+   the "Backend - Requests/sec by route" and "p95 Latency by route" panels
+   for data.
+7. Load `/grafana/` in an incognito window — should redirect to login, not
+   grant access.
 
 ## Status
 
@@ -154,13 +204,6 @@ the config was correct:
 - [x] Grafana provisioning wired into Docker Compose
 - [x] Datasource provisioning, validated in the UI
 - [x] Dashboard provider + "Infra Status" dashboard, validated with live data
-- [ ] Custom backend metrics beyond default NestJS/process metrics (request
-      counts, latencies, etc.) — not yet defined
-
-## AI usage note
-
-This monitoring setup (Grafana/Prometheus provisioning, docker-compose wiring,
-and the two bugs above) was built with AI assistance using a guided,
-question-first approach: each config change was explained before being applied,
-and both bugs were diagnosed from actual logs/target output rather than guessed
-at, so the reasoning is understood, not just copied.
+- [x] Custom backend metrics (request counts, p95 latency by route),
+      validated with live data
+- [x] Grafana access secured (no anonymous access, validated)
