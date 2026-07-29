@@ -154,6 +154,7 @@ services:
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana-db:/var/lib/grafana/
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       prometheus:
         condition: service_healthy
@@ -174,6 +175,7 @@ services:
     volumes:
       - prometheus-data:/var/lib/prometheus/data
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml
     depends_on:
       prometheus-init:
         condition: service_completed_successfully
