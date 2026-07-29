@@ -21,6 +21,17 @@ export class UsersService {
         ...createUserDto,
         password: hash,
       },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        avatar: true,
+        wallet: true,
+        wins: true,
+        losses: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 }
