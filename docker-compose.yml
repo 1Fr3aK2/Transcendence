@@ -123,7 +123,7 @@ services:
       - ./vault/certs:/etc/vault/certs
       - vault-data:/vault/data
     healthcheck:
-      test: ["CMD", "vault", "status"]
+      test: ["CMD-SHELL", "vault status; [ $? -ne 1 ]"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -131,10 +131,20 @@ services:
     command: vault server -config=/etc/vault/config/vault.hcl
     cap_add:
       - IPC_LOCK
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     depends_on:
       vault-data-init:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  vault-keys-init:
+    image: alpine
+    command: ["chown", "-R", "100:1000", "/vault/keys"]
+    volumes:
+      - vault-keys:/vault/keys
 
   vault_init:
     container_name: vault_init
@@ -155,6 +165,8 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+      vault-keys-init:
+        condition: service_completed_successfully
     restart: on-failure
 
   grafana:
