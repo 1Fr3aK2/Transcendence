@@ -2,5 +2,6 @@
 nginx/ssl_certificates
 vault/secrets
 nginx/certs/
+vault/certs/
 node_modules/
 scripts/nginx/
