@@ -12,6 +12,7 @@ services:
         condition: service_healthy
     command: ["npx", "prisma", "migrate", "deploy"]
     restart: on-failure
+
   backend:
      container_name: backend
      build:
@@ -21,7 +22,10 @@ services:
      environment:
        DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
        REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-       VAULT_ADDR: http://vault:8200
+       VAULT_ADDR: ${VAULT_ADDR}
+       VAULT_CACERT: ${VAULT_CACERT}
+     volumes:
+       - ./vault/certs:/etc/vault/certs:ro
      depends_on:
       postgres:
         condition: service_healthy
@@ -107,18 +111,19 @@ services:
     networks:
       - transcendence
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID}
-      VAULT_DEV_LISTEN_ADDRESS: ${VAULT_DEV_LISTEN_ADDRESS}
       VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_CACERT: ${VAULT_CACERT}
     volumes:
       - ./vault/config:/etc/vault/config
+      - ./vault/certs:/etc/vault/certs
+      - vault-data:/vault/data
     healthcheck:
       test: ["CMD", "vault", "status"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
-    command: vault server -dev
+    command: vault server -config=/etc/vault/config/vault.hcl
     cap_add:
       - IPC_LOCK
     restart: unless-stopped
@@ -129,14 +134,16 @@ services:
     networks:
       - transcendence
     environment:
-      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN_ID}
-      VAULT_ADDR: http://vault:8200
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_CACERT: ${VAULT_CACERT}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     entrypoint: ["sh", "/etc/vault/config/vault-init.sh"]
     volumes:
       - ./vault/config:/etc/vault/config
+      - ./vault/certs:/etc/vault/certs
+      - vault-keys:/vault/keys
     depends_on:
       vault:
         condition: service_healthy
@@ -160,7 +167,6 @@ services:
       prometheus:
         condition: service_healthy
     restart: unless-stopped
-
 
   prometheus-init:
     image: alpine
@@ -258,6 +264,8 @@ volumes:
   prometheus-data:
   redis-data:
   postgres-data:
+  vault-data:
+  vault-keys:
 
 networks:
   transcendence:
