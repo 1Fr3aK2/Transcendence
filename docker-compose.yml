@@ -105,6 +105,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  vault-data-init:
+    image: alpine
+    command: ["chown", "-R", "100:1000", "/vault/data"]
+    volumes:
+      - vault-data:/vault/data
   vault:
     container_name: vault
     image: hashicorp/vault
@@ -126,6 +131,9 @@ services:
     command: vault server -config=/etc/vault/config/vault.hcl
     cap_add:
       - IPC_LOCK
+    depends_on:
+      vault-data-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   vault_init:
