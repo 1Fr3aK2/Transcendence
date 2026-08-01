@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { loginUser } from '../api/auth';
 
 export default function LoginModal({ onClose, onSuccess }) {
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +31,7 @@ export default function LoginModal({ onClose, onSuccess }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Login</h2>
         <form onSubmit={handleSubmit}>
-          <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} required />
+          <input name="username" type="username" placeholder="Email" value={form.username} onChange={handleChange} required />
           <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} required />
           {error && <div className="modal-error">{error}</div>}
           <button type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>

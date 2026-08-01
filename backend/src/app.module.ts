@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { ForumModule } from './forum/forum.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -12,8 +13,9 @@ import { HealthModule } from './health/health.module';
     UsersModule,
     ForumModule,
     ModerationModule,
-	AuthModule,
-	HealthModule,
+	  AuthModule,
+	  HealthModule,
+    MetricsModule,
   ],
   controllers: [],
   providers: [],
