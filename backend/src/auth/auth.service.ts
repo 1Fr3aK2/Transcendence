@@ -16,7 +16,7 @@ export class AuthService {
 
   async login(dto: LoginDto) {
 
-    const key = "login_attempts:" + dto.email;
+    const key = "login_attempts:";
     const allowed = await this.rateLimiter.checkLimit(key, 5, 1800);
     if (!allowed) {
       throw new UnauthorizedException('Email ou password inválidos');
