@@ -24,6 +24,9 @@ services:
        REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
        VAULT_ADDR: ${VAULT_ADDR}
        VAULT_CACERT: ${VAULT_CACERT}
+       ADMIN_USERNAME: ${ADMIN_USERNAME}
+       ADMIN_EMAIL: ${ADMIN_EMAIL}
+       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
      volumes:
        - ./vault/certs:/etc/vault/certs:ro
      depends_on:
