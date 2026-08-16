@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ForumService } from './forum.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -6,6 +6,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { ReviewContentDto } from './dto/review-content.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth-guard';
 
 @Controller('forum')
 export class ForumController {
@@ -28,9 +29,10 @@ export class ForumController {
     return this.forumService.findPostById(Number(id));
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('posts')
-  createPost(@Body() createPostDto: CreatePostDto) {
-    return this.forumService.createPost(createPostDto);
+  createPost(@Body() createPostDto: CreatePostDto, @Req() request) {
+    return this.forumService.createPost(createPostDto, request.user.id);
   }
 
   @Patch('posts/:id')
@@ -46,12 +48,14 @@ export class ForumController {
     return this.forumService.deletePost(Number(id));
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('posts/:id/comments')
   createComment(
     @Param('id') id: string,
     @Body() createCommentDto: CreateCommentDto,
+    @Req() request,
   ) {
-    return this.forumService.createComment(Number(id), createCommentDto);
+    return this.forumService.createComment(Number(id), createCommentDto, request.user.id);
   }
 
   @Get('posts/:id/comments')

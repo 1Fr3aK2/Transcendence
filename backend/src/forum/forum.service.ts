@@ -37,7 +37,7 @@ export class ForumService {
     });
   }
 
-  createPost(createPostDto: CreatePostDto) {
+  createPost(createPostDto: CreatePostDto, userId: number) {
     const textToAnalyze =
       `${createPostDto.title}\n${createPostDto.content}`;
 
@@ -64,6 +64,7 @@ export class ForumService {
         moderationDecision: moderation.decision,
         moderationScore: moderation.score,
         moderationReasons: moderation.reasons,
+        authorId: userId,
       },
     });
   }
@@ -84,6 +85,7 @@ export class ForumService {
   async createComment(
     postId: number,
     createCommentDto: CreateCommentDto,
+    userId: number,
   ) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
@@ -125,6 +127,7 @@ export class ForumService {
         moderationDecision: moderation.decision,
         moderationScore: moderation.score,
         moderationReasons: moderation.reasons,
+        authorId: userId,
       },
     });
   }
