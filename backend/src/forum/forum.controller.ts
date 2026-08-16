@@ -70,9 +70,10 @@ export class ForumController {
     return this.forumService.findCommentsByPost(Number(id));
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('reports')
-  createReport(@Body() createReportDto: CreateReportDto) {
-    return this.forumService.createReport(createReportDto);
+  createReport(@Body() createReportDto: CreateReportDto, @Req() request) {
+    return this.forumService.createReport(createReportDto, request.user.id);
   }
 
   @Get('reports')

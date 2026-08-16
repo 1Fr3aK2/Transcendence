@@ -184,7 +184,7 @@ export class ForumService {
     });
   }
 
-  async createReport(createReportDto: CreateReportDto) {
+  async createReport(createReportDto: CreateReportDto, userId: number) {
     if (createReportDto.targetType === 'post') {
       const post = await this.prisma.post.findUnique({
         where: { id: createReportDto.targetId },
@@ -223,7 +223,7 @@ export class ForumService {
 
     const existingReport = await this.prisma.report.findFirst({
       where: {
-        reporterId: createReportDto.reporterId,
+        reporterId: userId,
         targetType: createReportDto.targetType,
         targetId: createReportDto.targetId,
         status: 'pending',
@@ -237,7 +237,12 @@ export class ForumService {
     }
 
     return this.prisma.report.create({
-      data: createReportDto,
+      data: {
+        targetType: createReportDto.targetType,
+        targetId: createReportDto.targetId,
+        reason: createReportDto.reason,
+        reporterId: userId,
+      },
     });
   }
 
