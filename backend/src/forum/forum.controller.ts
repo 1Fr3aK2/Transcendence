@@ -38,17 +38,20 @@ export class ForumController {
     return this.forumService.createPost(createPostDto, request.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('posts/:id')
   updatePost(
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto,
+    @Req() request,
   ) {
-    return this.forumService.updatePost(Number(id), updatePostDto);
+    return this.forumService.updatePost(Number(id), updatePostDto, request.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('posts/:id')
-  deletePost(@Param('id') id: string) {
-    return this.forumService.deletePost(Number(id));
+  deletePost(@Param('id') id: string, @Req() request) {
+    return this.forumService.deletePost(Number(id), request.user.id);
   }
 
   @UseGuards(JwtAuthGuard)

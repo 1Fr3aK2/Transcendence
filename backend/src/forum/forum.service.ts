@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -69,14 +70,53 @@ export class ForumService {
     });
   }
 
-  updatePost(id: number, updatePostDto: UpdatePostDto) {
+  async updatePost(
+    id: number,
+    updatePostDto: UpdatePostDto,
+    userId: number,
+  ) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw new NotFoundException(
+        `Post with id ${id} not found`,
+      );
+    }
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only update your own posts',
+      );
+    }
+
     return this.prisma.post.update({
       where: { id },
       data: updatePostDto,
     });
   }
 
-  deletePost(id: number) {
+  async deletePost(
+    id: number,
+    userId: number,
+  ) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw new NotFoundException(
+        `Post with id ${id} not found`,
+      );
+    }
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only delete your own posts',
+      );
+    }
+
     return this.prisma.post.delete({
       where: { id },
     });
