@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth-guard';
 export class ForumController {
   constructor(private readonly forumService: ForumService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   getForum() {
     return {
@@ -19,11 +20,13 @@ export class ForumController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('posts')
   getPosts() {
     return this.forumService.findAllPosts();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('posts/:id')
   getPostById(@Param('id') id: string) {
     return this.forumService.findPostById(Number(id));
@@ -58,6 +61,7 @@ export class ForumController {
     return this.forumService.createComment(Number(id), createCommentDto, request.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('posts/:id/comments')
   getCommentsByPost(@Param('id') id: string) {
     return this.forumService.findCommentsByPost(Number(id));
