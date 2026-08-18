@@ -262,6 +262,7 @@ export class ForumService {
   async resolveReport(
     reportId: number,
     resolveReportDto: ResolveReportDto,
+    moderatorId: number,
   ) {
     const report = await this.prisma.report.findUnique({
       where: { id: reportId },
@@ -322,7 +323,7 @@ export class ForumService {
       data: {
         status: 'resolved',
         resolution: resolveReportDto.action,
-        moderatorId: resolveReportDto.moderatorId,
+        moderatorId: moderatorId,
         moderatorNote: resolveReportDto.note,
         reviewedAt: new Date(),
       },
@@ -335,7 +336,7 @@ export class ForumService {
         targetId: report.targetId,
         action: resolveReportDto.action,
         reason: resolveReportDto.note,
-        moderatorId: resolveReportDto.moderatorId,
+        moderatorId: moderatorId,
       },
     });
 
@@ -378,6 +379,7 @@ export class ForumService {
   async reviewPendingPost(
     postId: number,
     reviewContentDto: ReviewContentDto,
+    moderatorId: number,
   ) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
@@ -414,7 +416,7 @@ export class ForumService {
         targetId: postId,
         action: reviewContentDto.action,
         reason: reviewContentDto.note,
-        moderatorId: reviewContentDto.moderatorId,
+        moderatorId,
       },
     });
 
@@ -424,6 +426,7 @@ export class ForumService {
   async reviewPendingComment(
     commentId: number,
     reviewContentDto: ReviewContentDto,
+    moderatorId: number,
   ) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
@@ -460,7 +463,7 @@ export class ForumService {
         targetId: commentId,
         action: reviewContentDto.action,
         reason: reviewContentDto.note,
-        moderatorId: reviewContentDto.moderatorId,
+        moderatorId,
       },
     });
 

@@ -11,9 +11,6 @@ export class ResolveReportDto {
   @IsIn(['dismiss', 'remove'])
   action: string;
 
-  @IsInt()
-  moderatorId: number;
-
   @IsOptional()
   @IsString()
   @MaxLength(500)

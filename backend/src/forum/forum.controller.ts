@@ -7,6 +7,9 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { ReviewContentDto } from './dto/review-content.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth-guard';
+import { Role } from '@prisma/client';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 
 @Controller('forum')
 export class ForumController {
@@ -76,51 +79,69 @@ export class ForumController {
     return this.forumService.createReport(createReportDto, request.user.id);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('reports')
   getReports(@Query('status') status?: string) {
     return this.forumService.findAllReports(status);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Patch('reports/:id/resolve')
   resolveReport(
     @Param('id') id: string,
     @Body() resolveReportDto: ResolveReportDto,
+    @Req() request,
   ) {
     return this.forumService.resolveReport(
       Number(id),
       resolveReportDto,
+      request.user.id
     );
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('moderation/logs')
   getModerationLogs() {
     return this.forumService.findAllModerationLogs();
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('moderation/pending')
   getPendingContent() {
     return this.forumService.findPendingContent();
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Patch('moderation/posts/:id/review')
   reviewPendingPost(
     @Param('id') id: string,
     @Body() reviewContentDto: ReviewContentDto,
+    @Req() request,
   ) {
     return this.forumService.reviewPendingPost(
       Number(id),
       reviewContentDto,
+      request.user.id
     );
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MODERATOR, Role.ADMIN)
   @Patch('moderation/comments/:id/review')
   reviewPendingComment(
     @Param('id') id: string,
     @Body() reviewContentDto: ReviewContentDto,
+    @Req() request,
   ) {
     return this.forumService.reviewPendingComment(
       Number(id),
       reviewContentDto,
+      request.user.id
     );
   }
 }
