@@ -92,9 +92,45 @@ export class ForumService {
       );
     }
 
+    if (post.status === 'removed') {
+      throw new ConflictException(
+        'Removed posts cannot be edited',
+      );
+    }
+
+    const updatedTitle =
+      updatePostDto.title ?? post.title;
+
+    const updatedContent =
+      updatePostDto.content ?? post.content;
+
+    const textToAnalyze =
+      `${updatedTitle}\n${updatedContent}`;
+
+    const moderation =
+      this.moderationService.analyzeText(textToAnalyze);
+
+    if (moderation.decision === 'rejected') {
+      throw new BadRequestException({
+        message: 'Post rejected by automatic moderation',
+        moderation,
+      });
+    }
+
+    const status =
+      moderation.decision === 'flagged'
+        ? 'pending'
+        : 'visible';
+
     return this.prisma.post.update({
       where: { id },
-      data: updatePostDto,
+      data: {
+        ...updatePostDto,
+        status,
+        moderationDecision: moderation.decision,
+        moderationScore: moderation.score,
+        moderationReasons: moderation.reasons,
+      },
     });
   }
 
@@ -206,9 +242,39 @@ export class ForumService {
       );
     }
 
+    if (comment.status === 'removed') {
+      throw new ConflictException(
+        'Removed comments cannot be edited',
+      );
+    }
+
+    const updatedContent =
+      updateCommentDto.content ?? comment.content;
+
+    const moderation =
+      this.moderationService.analyzeText(updatedContent);
+
+    if (moderation.decision === 'rejected') {
+      throw new BadRequestException({
+        message: 'Comment rejected by automatic moderation',
+        moderation,
+      });
+    }
+
+    const status =
+      moderation.decision === 'flagged'
+        ? 'pending'
+        : 'visible';
+
     return this.prisma.comment.update({
       where: { id },
-      data: updateCommentDto,
+      data: {
+        ...updateCommentDto,
+        status,
+        moderationDecision: moderation.decision,
+        moderationScore: moderation.score,
+        moderationReasons: moderation.reasons,
+      },
     });
   }
 
