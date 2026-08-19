@@ -7,19 +7,12 @@ export class CryptoController {
 
   @Get(':coin/history')
   getHistory(
-	@Param('coin') coin: string,
-	@Query('days') days?: string,
+    @Param('coin') coin: string,
+    @Query('days') days?: string,
   ) {
-	return this.cryptoService.getHistory(
-	  coin,
-	  days ? Number(days) : 7,
-	);
+    return this.cryptoService.getHistory(
+      coin,
+      days ? Number(days) : 7,
+    );
   }
-
-  //@Get('bitcoin/history')
-  //getBitcoinHistory(@Query('days') days?: string) {
-  //  return this.cryptoService.getBitcoinHistory(
-  //    days ? Number(days) : 7,
-  //  );
-  //}
 }
