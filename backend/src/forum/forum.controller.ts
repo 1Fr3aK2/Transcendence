@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuard
 import { ForumService } from './forum.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
@@ -71,6 +72,32 @@ export class ForumController {
   @Get('posts/:id/comments')
   getCommentsByPost(@Param('id') id: string) {
     return this.forumService.findCommentsByPost(Number(id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('comments/:id')
+  updateComment(
+    @Param('id') id: string,
+    @Body() updateCommentDto: UpdateCommentDto,
+    @Req() request,
+  ) {
+    return this.forumService.updateComment(
+      Number(id),
+      updateCommentDto,
+      request.user.id,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('comments/:id')
+  deleteComment(
+    @Param('id') id: string,
+    @Req() request,
+  ) {
+    return this.forumService.deleteComment(
+      Number(id),
+      request.user.id,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
@@ -181,6 +182,58 @@ export class ForumService {
       orderBy: {
         createdAt: 'asc',
       },
+    });
+  }
+
+  async updateComment(
+    id: number,
+    updateCommentDto: UpdateCommentDto,
+    userId: number,
+  ) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException(
+        `Comment with id ${id} not found`,
+      );
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only update your own comments',
+      );
+    }
+
+    return this.prisma.comment.update({
+      where: { id },
+      data: updateCommentDto,
+    });
+  }
+
+  async deleteComment(
+    id: number,
+    userId: number,
+  ) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException(
+        `Comment with id ${id} not found`,
+      );
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only delete your own comments',
+      );
+    }
+
+    return this.prisma.comment.delete({
+      where: { id },
     });
   }
 
