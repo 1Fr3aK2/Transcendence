@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './login.dto';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
@@ -51,5 +50,20 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
+  }
+  
+  	async getMe(user: any) {
+	const currentUser = await this.prisma.user.findUnique({
+	  where: {
+		id: user.id,
+	  },
+	  select: {
+		id: true,
+		username: true,
+		email: true,
+	  },
+	});
+  
+	return currentUser;
   }
 }

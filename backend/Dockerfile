@@ -23,8 +23,5 @@ RUN npx prisma generate
 # 7. Expor a porta que o teu NestJS vai usar (porta 3000)
 EXPOSE 8000
 
-# criacao de recursos para diferete users
-RUN nest g resource users
-
 # 8. Comando para iniciar o Nest em modo watch (hot-reload em tempo real)
 CMD ["npm", "run", "start:dev"]
