@@ -7,6 +7,7 @@ import { ModerationModule } from './moderation/moderation.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { CryptoModule } from './crypto/crypto.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CryptoModule } from './crypto/crypto.module';
 	  HealthModule,
     MetricsModule,
 	CryptoModule,
+	EventEmitterModule.forRoot(),
   ],
   controllers: [],
   providers: [],
