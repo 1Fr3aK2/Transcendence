@@ -4,6 +4,7 @@ CREATE TABLE "User" (
     "username" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
+	"role" "USER",
     "wallet" INTEGER NOT NULL DEFAULT 0,
     "avatar" TEXT,
     "wins" INTEGER NOT NULL DEFAULT 0,
