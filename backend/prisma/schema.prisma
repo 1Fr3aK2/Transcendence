@@ -12,6 +12,7 @@ model User {
   username  String   @unique
   email     String   @unique
   password  String
+  role      Role     @default(USER)
   wallet    Int      @default(0)
   avatar    String?
   wins      Int      @default(0)
@@ -72,4 +73,10 @@ model ModerationLog {
   reason      String?
   moderatorId Int
   createdAt   DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  MODERATOR
+  USER
 }
