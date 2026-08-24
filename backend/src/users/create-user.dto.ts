@@ -1,4 +1,3 @@
-import { User } from '@prisma/client';
 import { IsEmail, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateUserDto {
@@ -18,5 +17,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   avatar?: string;
-
 }
