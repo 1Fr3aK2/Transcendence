@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
@@ -37,7 +39,7 @@ export class ForumService {
     });
   }
 
-  createPost(createPostDto: CreatePostDto) {
+  createPost(createPostDto: CreatePostDto, userId: number) {
     const textToAnalyze =
       `${createPostDto.title}\n${createPostDto.content}`;
 
@@ -64,18 +66,94 @@ export class ForumService {
         moderationDecision: moderation.decision,
         moderationScore: moderation.score,
         moderationReasons: moderation.reasons,
+        authorId: userId,
       },
     });
   }
 
-  updatePost(id: number, updatePostDto: UpdatePostDto) {
+  async updatePost(
+    id: number,
+    updatePostDto: UpdatePostDto,
+    userId: number,
+  ) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw new NotFoundException(
+        `Post with id ${id} not found`,
+      );
+    }
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only update your own posts',
+      );
+    }
+
+    if (post.status === 'removed') {
+      throw new ConflictException(
+        'Removed posts cannot be edited',
+      );
+    }
+
+    const updatedTitle =
+      updatePostDto.title ?? post.title;
+
+    const updatedContent =
+      updatePostDto.content ?? post.content;
+
+    const textToAnalyze =
+      `${updatedTitle}\n${updatedContent}`;
+
+    const moderation =
+      this.moderationService.analyzeText(textToAnalyze);
+
+    if (moderation.decision === 'rejected') {
+      throw new BadRequestException({
+        message: 'Post rejected by automatic moderation',
+        moderation,
+      });
+    }
+
+    const status =
+      moderation.decision === 'flagged'
+        ? 'pending'
+        : 'visible';
+
     return this.prisma.post.update({
       where: { id },
-      data: updatePostDto,
+      data: {
+        ...updatePostDto,
+        status,
+        moderationDecision: moderation.decision,
+        moderationScore: moderation.score,
+        moderationReasons: moderation.reasons,
+      },
     });
   }
 
-  deletePost(id: number) {
+  async deletePost(
+    id: number,
+    userId: number,
+  ) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw new NotFoundException(
+        `Post with id ${id} not found`,
+      );
+    }
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only delete your own posts',
+      );
+    }
+
     return this.prisma.post.delete({
       where: { id },
     });
@@ -84,6 +162,7 @@ export class ForumService {
   async createComment(
     postId: number,
     createCommentDto: CreateCommentDto,
+    userId: number,
   ) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
@@ -125,6 +204,7 @@ export class ForumService {
         moderationDecision: moderation.decision,
         moderationScore: moderation.score,
         moderationReasons: moderation.reasons,
+        authorId: userId,
       },
     });
   }
@@ -141,7 +221,89 @@ export class ForumService {
     });
   }
 
-  async createReport(createReportDto: CreateReportDto) {
+  async updateComment(
+    id: number,
+    updateCommentDto: UpdateCommentDto,
+    userId: number,
+  ) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException(
+        `Comment with id ${id} not found`,
+      );
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only update your own comments',
+      );
+    }
+
+    if (comment.status === 'removed') {
+      throw new ConflictException(
+        'Removed comments cannot be edited',
+      );
+    }
+
+    const updatedContent =
+      updateCommentDto.content ?? comment.content;
+
+    const moderation =
+      this.moderationService.analyzeText(updatedContent);
+
+    if (moderation.decision === 'rejected') {
+      throw new BadRequestException({
+        message: 'Comment rejected by automatic moderation',
+        moderation,
+      });
+    }
+
+    const status =
+      moderation.decision === 'flagged'
+        ? 'pending'
+        : 'visible';
+
+    return this.prisma.comment.update({
+      where: { id },
+      data: {
+        ...updateCommentDto,
+        status,
+        moderationDecision: moderation.decision,
+        moderationScore: moderation.score,
+        moderationReasons: moderation.reasons,
+      },
+    });
+  }
+
+  async deleteComment(
+    id: number,
+    userId: number,
+  ) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException(
+        `Comment with id ${id} not found`,
+      );
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException(
+        'You can only delete your own comments',
+      );
+    }
+
+    return this.prisma.comment.delete({
+      where: { id },
+    });
+  }
+
+  async createReport(createReportDto: CreateReportDto, userId: number) {
     if (createReportDto.targetType === 'post') {
       const post = await this.prisma.post.findUnique({
         where: { id: createReportDto.targetId },
@@ -180,7 +342,7 @@ export class ForumService {
 
     const existingReport = await this.prisma.report.findFirst({
       where: {
-        reporterId: createReportDto.reporterId,
+        reporterId: userId,
         targetType: createReportDto.targetType,
         targetId: createReportDto.targetId,
         status: 'pending',
@@ -194,7 +356,12 @@ export class ForumService {
     }
 
     return this.prisma.report.create({
-      data: createReportDto,
+      data: {
+        targetType: createReportDto.targetType,
+        targetId: createReportDto.targetId,
+        reason: createReportDto.reason,
+        reporterId: userId,
+      },
     });
   }
 
@@ -214,6 +381,7 @@ export class ForumService {
   async resolveReport(
     reportId: number,
     resolveReportDto: ResolveReportDto,
+    moderatorId: number,
   ) {
     const report = await this.prisma.report.findUnique({
       where: { id: reportId },
@@ -274,7 +442,7 @@ export class ForumService {
       data: {
         status: 'resolved',
         resolution: resolveReportDto.action,
-        moderatorId: resolveReportDto.moderatorId,
+        moderatorId: moderatorId,
         moderatorNote: resolveReportDto.note,
         reviewedAt: new Date(),
       },
@@ -287,7 +455,7 @@ export class ForumService {
         targetId: report.targetId,
         action: resolveReportDto.action,
         reason: resolveReportDto.note,
-        moderatorId: resolveReportDto.moderatorId,
+        moderatorId: moderatorId,
       },
     });
 
@@ -330,6 +498,7 @@ export class ForumService {
   async reviewPendingPost(
     postId: number,
     reviewContentDto: ReviewContentDto,
+    moderatorId: number,
   ) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
@@ -366,7 +535,7 @@ export class ForumService {
         targetId: postId,
         action: reviewContentDto.action,
         reason: reviewContentDto.note,
-        moderatorId: reviewContentDto.moderatorId,
+        moderatorId,
       },
     });
 
@@ -376,6 +545,7 @@ export class ForumService {
   async reviewPendingComment(
     commentId: number,
     reviewContentDto: ReviewContentDto,
+    moderatorId: number,
   ) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
@@ -412,7 +582,7 @@ export class ForumService {
         targetId: commentId,
         action: reviewContentDto.action,
         reason: reviewContentDto.note,
-        moderatorId: reviewContentDto.moderatorId,
+        moderatorId,
       },
     });
 

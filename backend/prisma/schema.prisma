@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   username  String   @unique
@@ -16,8 +22,17 @@ model User {
   avatar    String?
   wins      Int      @default(0)
   losses    Int      @default(0)
+  role      Role     @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  posts    Post[]
+  comments Comment[]
+
+  reportsCreated   Report[] @relation("ReportsCreated")
+  reportsModerated Report[] @relation("ReportsModerated")
+
+  moderationLogs ModerationLog[]
 }
 
 model Post {
@@ -30,6 +45,9 @@ model Post {
   moderationReasons  String[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  authorId Int
+  author   User @relation(fields: [authorId], references: [id])
 
   comments Comment[]
 }
@@ -46,6 +64,9 @@ model Comment {
 
   postId Int
   post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorId Int
+  author   User @relation(fields: [authorId], references: [id])
 }
 
 model Report {
@@ -61,6 +82,9 @@ model Report {
   reviewedAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  reporter  User  @relation("ReportsCreated", fields: [reporterId], references: [id])
+  moderator User? @relation("ReportsModerated", fields: [moderatorId], references: [id])
 }
 
 model ModerationLog {
@@ -72,4 +96,6 @@ model ModerationLog {
   reason      String?
   moderatorId Int
   createdAt   DateTime @default(now())
+
+  moderator User @relation(fields: [moderatorId], references: [id])
 }

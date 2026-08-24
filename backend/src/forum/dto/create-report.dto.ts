@@ -12,7 +12,4 @@ export class CreateReportDto {
   @IsNotEmpty()
   @MaxLength(500)
   reason: string;
-
-  @IsInt()
-  reporterId: number;
 }

@@ -1,8 +1,8 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './create-user.dto';
 import * as bcrypt from 'bcrypt';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 
 
 //@UseGuards(JwtAuthGuard)
@@ -16,6 +16,7 @@ export class UsersService {
       id: true,
       username: true,
       email: true,
+	  role: true,
       avatar: true,
       wallet: true,
       wins: true,
@@ -39,6 +40,7 @@ export class UsersService {
 			id: true,
 			username: true,
 			email: true,
+			role: true,
 			avatar: true,
 			wallet: true,
 			wins: true,
@@ -58,4 +60,48 @@ export class UsersService {
 		throw error;
 	  }
 	}
+
+  async updateRole(
+    userId: number,
+    role: Role,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        `User with id ${userId} not found`,
+      );
+    }
+
+    if (user.role === Role.ADMIN) {
+      throw new BadRequestException(
+        'Admin role cannot be changed through this endpoint',
+      );
+    }
+
+    if (role !== Role.USER && role !== Role.MODERATOR) {
+      throw new BadRequestException(
+        'Role must be USER or MODERATOR',
+      );
+    }
+
+    return this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        role,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+      },
+    });
+  }
 }

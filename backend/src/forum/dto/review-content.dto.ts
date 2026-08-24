@@ -11,9 +11,6 @@ export class ReviewContentDto {
   @IsIn(['approve', 'remove'])
   action: string;
 
-  @IsInt()
-  moderatorId: number;
-
   @IsOptional()
   @IsString()
   @MaxLength(500)
