@@ -2,6 +2,7 @@
 set -e
 
 KEYS_FILE="/vault/keys/init.json"
+APPROLE_DIR="/vault/approle"
 
 # 1. Inicializar o Vault — só corre uma vez, na primeira vez que o container arranca.
 #    Nas execuções seguintes, o ficheiro já existe e este passo é ignorado.
@@ -40,6 +41,7 @@ vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
 # 4. Guardar secrets (idempotente — vault kv put sobrescreve sem falhar)
 vault kv put secret/postgres user="${POSTGRES_USER}" password="${POSTGRES_PASSWORD}"
 vault kv put secret/redis password="${REDIS_PASSWORD}"
+vault kv put secret/admin-api key="${ADMIN_API_KEY}"
 
 # 5. Carregar a policy
 vault policy write backend-policy /etc/vault/config/backend-policy.hcl
@@ -54,8 +56,12 @@ vault write auth/approle/role/backend-role \
   token_max_ttl=4h \
   secret_id_ttl=24h
 
-# 8. Obter o RoleID (fixo)
-vault read auth/approle/role/backend-role/role-id
+# 8. Obter o RoleID (fixo) e disponibilizá-lo ao backend via volume partilhado
+mkdir -p "$APPROLE_DIR"
+vault read -field=role_id auth/approle/role/backend-role/role-id > "$APPROLE_DIR/role_id"
 
-# 9. Gerar o SecretID (sensível, expira em 24h)
-vault write -f auth/approle/role/backend-role/secret-id
+# 9. Gerar o SecretID (sensível, expira em 24h) e disponibilizá-lo da mesma forma
+vault write -f -field=secret_id auth/approle/role/backend-role/secret-id > "$APPROLE_DIR/secret_id"
+
+chmod 600 "$APPROLE_DIR/role_id" "$APPROLE_DIR/secret_id"
+echo "[*] role_id e secret_id gravados em $APPROLE_DIR"

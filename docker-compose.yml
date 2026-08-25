@@ -24,11 +24,13 @@ services:
        REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
        VAULT_ADDR: ${VAULT_ADDR}
        VAULT_CACERT: ${VAULT_CACERT}
+       NODE_EXTRA_CA_CERTS: ${VAULT_CACERT}
        ADMIN_USERNAME: ${ADMIN_USERNAME}
        ADMIN_EMAIL: ${ADMIN_EMAIL}
        ADMIN_PASSWORD: ${ADMIN_PASSWORD}
      volumes:
        - ./vault/certs:/etc/vault/certs:ro
+       - vault-approle:/vault/approle:ro
      depends_on:
       postgres:
         condition: service_healthy
@@ -37,6 +39,8 @@ services:
       vault:
         condition: service_healthy
       backend_migrate:
+        condition: service_completed_successfully
+      vault_init:
         condition: service_completed_successfully
      healthcheck:
        test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
@@ -153,6 +157,12 @@ services:
     volumes:
       - vault-keys:/vault/keys
 
+  vault-approle-init:
+    image: alpine
+    command: ["chown", "-R", "100:1000", "/vault/approle"]
+    volumes:
+      - vault-approle:/vault/approle
+
   vault_init:
     container_name: vault_init
     image: hashicorp/vault
@@ -164,15 +174,19 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
     entrypoint: ["sh", "/etc/vault/config/vault-init.sh"]
     volumes:
       - ./vault/config:/etc/vault/config
       - ./vault/certs:/etc/vault/certs
       - vault-keys:/vault/keys
+      - vault-approle:/vault/approle
     depends_on:
       vault:
         condition: service_healthy
       vault-keys-init:
+        condition: service_completed_successfully
+      vault-approle-init:
         condition: service_completed_successfully
     restart: on-failure
 
@@ -293,6 +307,7 @@ volumes:
   postgres-data:
   vault-data:
   vault-keys:
+  vault-approle:
 
 networks:
   transcendence:

@@ -5,3 +5,7 @@ path "secret/data/postgres" {
 path "secret/data/redis" {
     capabilities = ["read"]
 }
+
+path "secret/data/admin-api" {
+  capabilities = ["read"]
+}
