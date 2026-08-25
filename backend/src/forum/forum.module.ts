@@ -9,5 +9,6 @@ import { AuthModule } from '../auth/auth.module';
   imports: [PrismaModule, ModerationModule, AuthModule],
   controllers: [ForumController],
   providers: [ForumService],
+  exports: [ForumService],
 })
 export class ForumModule {}
