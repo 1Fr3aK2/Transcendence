@@ -3,6 +3,7 @@ import { PublicApiController } from './public-api.controller';
 import { ForumModule } from '../forum/forum.module';
 import { UsersModule } from '../users/users.module';
 import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
+import { AdminApiKeyGuard } from './admin-api-key.guard';
 
 @Module({
   imports: [
@@ -11,5 +12,6 @@ import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
     RateLimiterModule,
   ],
   controllers: [PublicApiController],
+  providers: [AdminApiKeyGuard],
 })
 export class PublicApiModule {}
