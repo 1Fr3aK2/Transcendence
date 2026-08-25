@@ -2,8 +2,11 @@ import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { loadSecretsFromVault } from './vault/vault-bootstrap';
 
 async function bootstrap() {
+  await loadSecretsFromVault();
+  
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
