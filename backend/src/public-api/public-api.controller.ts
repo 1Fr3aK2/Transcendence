@@ -1,13 +1,20 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Patch, Query, UseGuards } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { UpdateUserRoleDto } from '../users/update-user-role.dto';
+import { ForumService } from '../forum/forum.service';
+import { ResolveReportDto } from '../forum/dto/resolve-report.dto';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
+import { AdminIdentityService } from './admin-identity.service';
 
 @UseGuards(AdminApiKeyGuard)
 @Controller('api/admin')
 export class PublicApiController {
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly forumService: ForumService,
+    private readonly adminIdentityService: AdminIdentityService,
+  ) {}
 
   @Get('users')
   getUsers() {
@@ -23,5 +30,35 @@ export class PublicApiController {
       Number(id),
       updateUserRoleDto.role,
     );
+  }
+
+  @Get('reports')
+  getReports(@Query('status') status?: string) {
+    return this.forumService.findAllReports(status);
+  }
+
+  @Patch('reports/:id/resolve')
+  async resolveReport(
+    @Param('id') id: string,
+    @Body() resolveReportDto: ResolveReportDto,
+  ) {
+    const adminId =
+      await this.adminIdentityService.getAdminId();
+
+    return this.forumService.resolveReport(
+      Number(id),
+      resolveReportDto,
+      adminId,
+    );
+  }
+
+  @Get('moderation/pending')
+  getPendingContent() {
+    return this.forumService.findPendingContent();
+  }
+
+  @Get('moderation/logs')
+  getModerationLogs() {
+    return this.forumService.findAllModerationLogs();
   }
 }
