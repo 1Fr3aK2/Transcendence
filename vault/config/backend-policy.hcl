@@ -9,3 +9,7 @@ path "secret/data/redis" {
 path "secret/data/admin-api" {
   capabilities = ["read"]
 }
+
+path "secret/data/admin-account" {
+  capabilities = ["read"]
+}

@@ -42,7 +42,7 @@ vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
 vault kv put secret/postgres user="${POSTGRES_USER}" password="${POSTGRES_PASSWORD}"
 vault kv put secret/redis password="${REDIS_PASSWORD}"
 vault kv put secret/admin-api key="${ADMIN_API_KEY}"
-
+vault kv put secret/admin-account username="${ADMIN_USERNAME}" email="${ADMIN_EMAIL}" password="${ADMIN_PASSWORD}"
 # 5. Carregar a policy
 vault policy write backend-policy /etc/vault/config/backend-policy.hcl
 

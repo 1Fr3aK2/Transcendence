@@ -25,9 +25,6 @@ services:
        VAULT_ADDR: ${VAULT_ADDR}
        VAULT_CACERT: ${VAULT_CACERT}
        NODE_EXTRA_CA_CERTS: ${VAULT_CACERT}
-       ADMIN_USERNAME: ${ADMIN_USERNAME}
-       ADMIN_EMAIL: ${ADMIN_EMAIL}
-       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
      volumes:
        - ./vault/certs:/etc/vault/certs:ro
        - vault-approle:/vault/approle:ro
@@ -175,6 +172,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       ADMIN_API_KEY: ${ADMIN_API_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     entrypoint: ["sh", "/etc/vault/config/vault-init.sh"]
     volumes:
       - ./vault/config:/etc/vault/config
