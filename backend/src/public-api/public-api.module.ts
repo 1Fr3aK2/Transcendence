@@ -6,6 +6,7 @@ import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminIdentityService } from './admin-identity.service';
+import { AdminApiRateLimitGuard } from './admin-api-rate-limit.guard';
 
 @Module({
   imports: [
@@ -15,6 +16,6 @@ import { AdminIdentityService } from './admin-identity.service';
     PrismaModule,
   ],
   controllers: [PublicApiController],
-  providers: [AdminApiKeyGuard, AdminIdentityService],
+  providers: [AdminApiKeyGuard, AdminIdentityService, AdminApiRateLimitGuard],
 })
 export class PublicApiModule {}

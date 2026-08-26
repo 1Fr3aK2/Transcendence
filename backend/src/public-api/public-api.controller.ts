@@ -6,8 +6,9 @@ import { ResolveReportDto } from '../forum/dto/resolve-report.dto';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { AdminIdentityService } from './admin-identity.service';
 import { CreatePostDto } from '../forum/dto/create-post.dto';
+import { AdminApiRateLimitGuard } from './admin-api-rate-limit.guard';
 
-@UseGuards(AdminApiKeyGuard)
+@UseGuards(AdminApiKeyGuard, AdminApiRateLimitGuard)
 @Controller('api/admin')
 export class PublicApiController {
 
