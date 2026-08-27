@@ -1,9 +1,13 @@
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { loadSecretsFromVault } from '../src/vault/vault-bootstrap';
 
 const prisma = new PrismaClient();
 
 async function main() {
+
+  await loadSecretsFromVault();
+
   const username = process.env.ADMIN_USERNAME;
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
