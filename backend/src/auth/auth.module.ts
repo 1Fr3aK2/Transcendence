@@ -6,13 +6,13 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
-import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
+import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
     PrismaModule,
-
+    RateLimiterModule,
     PassportModule,
 
     JwtModule.register({
@@ -30,7 +30,6 @@ import { RolesGuard } from './roles.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    RateLimiterService,
     RolesGuard,
   ],
 

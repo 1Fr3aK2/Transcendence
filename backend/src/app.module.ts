@@ -8,6 +8,7 @@ import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { PublicApiModule } from './public-api/public-api.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     MetricsModule,
 	CryptoModule,
 	EventEmitterModule.forRoot(),
+    PublicApiModule,
   ],
   controllers: [],
   providers: [],
