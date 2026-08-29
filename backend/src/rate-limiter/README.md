@@ -131,4 +131,4 @@ Both mechanisms are confirmed working correctly end-to-end.
 
 - Vault runs in `-dev` mode (no persistence, no real seal/unseal) — acceptable for the scope of the project, but documented as a known simplification.
 - Current monitoring is metrics-only (Prometheus/Grafana); there's no centralized log aggregation (e.g. Loki) — a gap to cover if time allows.
-- No rate limiting yet on the remaining endpoints (forum, trades) — `RateLimiterService` is already built to be reused once those routes exist.
+- Rate limiting is not yet applied to all remaining endpoints (for example, forum and trades). The shared RateLimiterService is currently reused by both the login endpoint and the Public Admin API.
