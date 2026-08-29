@@ -13,6 +13,28 @@ services:
     command: ["npx", "prisma", "migrate", "deploy"]
     restart: on-failure
 
+  backend_seed:
+    container_name: backend_seed
+    build:
+      context: ./backend
+    networks:
+      - transcendence
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_CACERT: ${VAULT_CACERT}
+      NODE_EXTRA_CA_CERTS: ${VAULT_CACERT}
+    volumes:
+      - ./vault/certs:/etc/vault/certs:ro
+      - vault-approle:/vault/approle:ro
+    depends_on:
+      backend_migrate:
+        condition: service_completed_successfully
+      vault_init:
+        condition: service_completed_successfully
+    command: ["npx", "prisma", "db", "seed"]
+    restart: on-failure
+
   backend:
      container_name: backend
      build:
@@ -36,6 +58,8 @@ services:
       vault:
         condition: service_healthy
       backend_migrate:
+        condition: service_completed_successfully
+      backend_seed:
         condition: service_completed_successfully
       vault_init:
         condition: service_completed_successfully
