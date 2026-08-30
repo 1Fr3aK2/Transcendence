@@ -6,11 +6,14 @@ import Timer from './components/Timer';
 import BetSection from './components/BetSection';
 import ActiveBets from './components/ActiveBets';
 import HistoryList from './components/HistoryList';
+import PriceChart from './components/PriceChart';
 import Toast from './components/Toast';
 import RegisterModal from './components/RegisterModal';
 import LoginModal from './components/LoginModal';
 import { fakePrices, PAYOUT, MINUTE, WINDOW } from './data/constants';
-import { randomMove } from './utils/format';
+import { socket } from './api/socket';
+
+const HISTORY_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 export default function App() {
   // ── State (this replaces every loose "let" at the top of script.js) ──
@@ -21,6 +24,20 @@ export default function App() {
     for (const coin in fakePrices) obj[coin] = fakePrices[coin].price;
     return obj;
   });
+  // Snapshot of each coin's price at the start of the current round —
+  // used as the reference point for the % change shown in PriceDisplay.
+  const [roundStartPrices, setRoundStartPrices] = useState(() => {
+    const obj = {};
+    for (const coin in fakePrices) obj[coin] = fakePrices[coin].price;
+    return obj;
+  });
+  // Rolling price history per coin, used by the chart (last 10 minutes).
+  const [priceHistory, setPriceHistory] = useState(() => {
+    const obj = {};
+    for (const coin in fakePrices) obj[coin] = [];
+    return obj;
+  });
+  const [sidePanelView, setSidePanelView] = useState('chart'); // 'chart' | 'activity'
   const [cycleSecond, setCycleSecond] = useState(0);
   const [bets, setBets] = useState([]);
   const [history, setHistory] = useState([]);
@@ -53,6 +70,25 @@ export default function App() {
     if (currentUser) localStorage.setItem('currentUser', JSON.stringify(currentUser));
     else localStorage.removeItem('currentUser');
   }, [currentUser]);
+
+  // ── Listen for real-time crypto prices from the backend's Socket.io gateway ──
+  useEffect(() => {
+    function handleTicker(ticker) {
+      const coin = ticker.symbol.split('/')[0]; // "BTC/EUR" -> "BTC"
+      const now = Date.now();
+
+      setCurrentPrices((prev) => ({ ...prev, [coin]: ticker.last }));
+
+      setPriceHistory((prev) => {
+        const points = [...(prev[coin] || []), { time: now, price: ticker.last }];
+        const cutoff = now - HISTORY_WINDOW_MS;
+        return { ...prev, [coin]: points.filter((p) => p.time >= cutoff) };
+      });
+    }
+
+    socket.on('crypto:ticker', handleTicker);
+    return () => socket.off('crypto:ticker', handleTicker);
+  }, []);
 
   // ── "Methods" (same responsibilities as the functions in script.js) ──
 
@@ -122,21 +158,13 @@ export default function App() {
     setCurrentUser({ username: 'placeholder' }); // see note below
   }
 
-  // ── Main game loop: replaces the setInterval at the bottom of script.js ──
+  // ── Round timer: advances the clock and resolves bets every minute ──
   useEffect(() => {
     const interval = setInterval(() => {
-      // 1. tick every coin's price
-      setCurrentPrices((prev) => {
-        const next = {};
-        for (const coin in prev) next[coin] = randomMove(prev[coin]);
-        return next;
-      });
-
-      // 2. advance the clock, and on the turn of a new minute resolve bets
       setCycleSecond((prevSecond) => {
-        const nextSecond = (prevSecond + 1) % MINUTE;
+        const next = (prevSecond + 1) % MINUTE;
 
-        if (nextSecond === 0) {
+        if (next === 0) {
           const latestPrices = pricesRef.current;
           const currentBets = betsRef.current;
 
@@ -152,9 +180,12 @@ export default function App() {
               .map((b) => (b.status === 'queued' ? { ...b, status: 'active', entry: latestPrices[b.coin] } : b))
           );
           setBetStatus({ text: '', type: '' });
+
+          // New round starting — snapshot current prices as the new reference point
+          setRoundStartPrices({ ...latestPrices });
         }
 
-        return nextSecond;
+        return next;
       });
     }, 1000);
 
@@ -181,7 +212,7 @@ export default function App() {
             <PriceDisplay
               coin={selectedCoin}
               price={currentPrices[selectedCoin]}
-              basePrice={fakePrices[selectedCoin].price}
+              basePrice={roundStartPrices[selectedCoin]}
               stats={fakePrices[selectedCoin]}
             />
             <Timer cycleSecond={cycleSecond} hasQueuedBet={hasQueuedBet} />
@@ -195,8 +226,29 @@ export default function App() {
           </div>
 
           <div className="side-panel">
-            <ActiveBets bets={bets} />
-            <HistoryList history={history} />
+            <div className="side-panel-tabs">
+              <button
+                className={`side-tab-btn ${sidePanelView === 'chart' ? 'active' : ''}`}
+                onClick={() => setSidePanelView('chart')}
+              >
+                Chart
+              </button>
+              <button
+                className={`side-tab-btn ${sidePanelView === 'activity' ? 'active' : ''}`}
+                onClick={() => setSidePanelView('activity')}
+              >
+                Activity
+              </button>
+            </div>
+
+            {sidePanelView === 'chart' ? (
+              <PriceChart coin={selectedCoin} data={priceHistory[selectedCoin] || []} />
+            ) : (
+              <>
+                <ActiveBets bets={bets} />
+                <HistoryList history={history} />
+              </>
+            )}
           </div>
         </div>
       </main>
