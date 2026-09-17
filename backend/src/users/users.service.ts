@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { Prisma, Role } from '@prisma/client';
+import { UpdateMeDto } from './update-me.dto';
+import { UpdatePasswordDto } from './update-password.dto';
 
 
 //@UseGuards(JwtAuthGuard)
@@ -103,5 +105,99 @@ export class UsersService {
         role: true,
       },
     });
+  }
+  async updateMe( userId: number,	updateMeDto: UpdateMeDto,) 
+  {
+	const user = await this.prisma.user.findUnique({
+	  where: {
+		id: userId,
+	  },
+	});
+  
+	if (!user) {
+	  throw new NotFoundException(
+		`User with id ${userId} not found`,
+	  );
+	}
+  
+	try {
+	  return await this.prisma.user.update({
+		where: {
+		  id: userId,
+		},
+		data: {
+		  username: updateMeDto.username,
+		  avatar: updateMeDto.avatar,
+		},
+		select: {
+		  id: true,
+		  username: true,
+		  email: true,
+		  role: true,
+		  avatar: true,
+		  wallet: true,
+		  wins: true,
+		  losses: true,
+		  createdAt: true,
+		  updatedAt: true,
+		},
+	  });
+	} catch (error) {
+	  if (
+		error instanceof Prisma.PrismaClientKnownRequestError &&
+		error.code === 'P2002'
+	  ) {
+		throw new ConflictException(
+		  'Username already exists',
+		);
+	  }
+  
+	  throw error;
+	}
+  }
+  async updatePassword(
+	userId: number,
+	updatePasswordDto: UpdatePasswordDto,
+  ) {
+	const user = await this.prisma.user.findUnique({
+	  where: {
+		id: userId,
+	  },
+	});
+  
+	if (!user) {
+	  throw new NotFoundException(
+		`User with id ${userId} not found`,
+	  );
+	}
+  
+	const passwordValid = await bcrypt.compare(
+	  updatePasswordDto.currentPassword,
+	  user.password,
+	);
+  
+	if (!passwordValid) {
+	  throw new BadRequestException(
+		'Current password is incorrect',
+	  );
+	}
+  
+	const hash = await bcrypt.hash(
+	  updatePasswordDto.newPassword,
+	  10,
+	);
+  
+	await this.prisma.user.update({
+	  where: {
+		id: userId,
+	  },
+	  data: {
+		password: hash,
+	  },
+	});
+  
+	return {
+	  message: 'Password updated successfully',
+	};
   }
 }

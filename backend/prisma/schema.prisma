@@ -26,6 +26,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+
   posts    Post[]
   comments Comment[]
 
@@ -96,6 +97,7 @@ model ModerationLog {
   reason      String?
   moderatorId Int
   createdAt   DateTime @default(now())
+
 
   moderator User @relation(fields: [moderatorId], references: [id])
 }
