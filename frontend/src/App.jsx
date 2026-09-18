@@ -11,6 +11,7 @@ import Toast from './components/Toast';
 import RegisterModal from './components/RegisterModal';
 import LoginModal from './components/LoginModal';
 import SettingsPage from './components/SettingsPage';
+import ForumPage from './components/Forum/ForumPage';
 import { fakePrices, PAYOUT, MINUTE, WINDOW } from './data/constants';
 import { socket } from './api/socket';
 
@@ -48,6 +49,7 @@ export default function App() {
   const [showRegister, setShowRegister] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showForum, setShowForum] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('currentUser');
     return saved ? JSON.parse(saved) : null;
@@ -204,6 +206,7 @@ export default function App() {
         onRegisterClick={() => setShowRegister(true)}
         onLoginClick={() => setShowLogin(true)}
         onSettingsClick={() => setShowSettings(true)}
+        onForumClick={() => setShowForum(true)}
         currentUser={currentUser}
         onLogout={() => { setCurrentUser(null); setToken(null); }}
       />
@@ -261,7 +264,8 @@ export default function App() {
       {showRegister && (
         <RegisterModal
           onClose={() => setShowRegister(false)}
-          onSuccess={(user) => {
+          onSuccess={({ user, accessToken }) => {
+            setToken(accessToken);
             setCurrentUser(user);
             showToast(`Welcome, ${user.username}!`, 'win');
           }}
@@ -283,6 +287,14 @@ export default function App() {
             setCurrentUser((u) => ({ ...u, ...updatedUser }));
             showToast('Profile updated', 'win');
           }}
+        />
+      )}
+
+      {showForum && (
+        <ForumPage
+          token={token}
+          currentUser={currentUser}
+          onClose={() => setShowForum(false)}
         />
       )}
     </>
