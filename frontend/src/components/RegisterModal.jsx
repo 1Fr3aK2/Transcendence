@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { registerUser } from '../api/users';
+import { loginUser } from '../api/auth';
 
 export default function RegisterModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({ username: '', email: '', password: '' });
@@ -17,7 +18,15 @@ export default function RegisterModal({ onClose, onSuccess }) {
     setLoading(true);
     try {
       const user = await registerUser({ ...form, wallet: 0 });
-      onSuccess(user);
+
+      // Registration doesn't return a token, so log in right after
+      // with the same credentials to get a real session going.
+      const { access_token } = await loginUser({
+        username: form.username,
+        password: form.password,
+      });
+
+      onSuccess({ user, accessToken: access_token });
       onClose();
     } catch (err) {
       setError(err.message);
