@@ -123,6 +123,7 @@ services:
       SSL_PROTOCOLS: TLSv1.2 TLSv1.3
       PARANOIA: "2"
       BLOCKING_PARANOIA: "2"
+      MODSEC_AUDIT_LOG_PARTS: "AIJDEFHZ"
     restart: unless-stopped
 
   nginx_exporter:
