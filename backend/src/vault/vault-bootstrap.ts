@@ -48,6 +48,13 @@ export async function loadSecretsFromVault(): Promise<void> {
   process.env.ADMIN_USERNAME = username;
   process.env.ADMIN_EMAIL = email;
   process.env.ADMIN_PASSWORD = password;
+
+  const jwtData = await readVaultSecret(vaultAddr, clientToken, 'jwt');
+  const jwtSecret = jwtData.secret;
+  if (!jwtSecret) {
+    throw new Error('secret/jwt não tem o campo "secret" definido');
+  }
+  process.env.JWT_SECRET = jwtSecret;
 }
 
 async function readVaultSecret(

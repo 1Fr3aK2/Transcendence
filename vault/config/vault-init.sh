@@ -43,6 +43,7 @@ vault kv put secret/postgres user="${POSTGRES_USER}" password="${POSTGRES_PASSWO
 vault kv put secret/redis password="${REDIS_PASSWORD}"
 vault kv put secret/admin-api key="${ADMIN_API_KEY}"
 vault kv put secret/admin-account username="${ADMIN_USERNAME}" email="${ADMIN_EMAIL}" password="${ADMIN_PASSWORD}"
+vault kv put secret/jwt secret="${JWT_SECRET}"
 # 5. Carregar a policy
 vault policy write backend-policy /etc/vault/config/backend-policy.hcl
 

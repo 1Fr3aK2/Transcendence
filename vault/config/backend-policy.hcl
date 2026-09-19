@@ -13,3 +13,7 @@ path "secret/data/admin-api" {
 path "secret/data/admin-account" {
   capabilities = ["read"]
 }
+
+path "secret/data/jwt" {
+  capabilities = ["read"]
+}

@@ -200,6 +200,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
     entrypoint: ["sh", "/etc/vault/config/vault-init.sh"]
     volumes:
       - ./vault/config:/etc/vault/config
