@@ -16,9 +16,13 @@ export class AdminApiRateLimitGuard implements CanActivate {
   async canActivate(
     context: ExecutionContext,
   ): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const clientIp =
+      (request.headers['x-real-ip'] as string) || request.ip;
+
     const allowed =
       await this.rateLimiterService.checkLimit(
-        'admin_api_requests',
+        `admin_api_requests:${clientIp}`,
         100,
         60,
       );
