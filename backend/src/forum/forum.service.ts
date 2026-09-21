@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,12 +18,14 @@ import { ModerationService } from '../moderation/moderation.service';
 import { ReviewContentDto } from './dto/review-content.dto';
 import { SearchPostsDto } from './dto/search-posts.dto';
 import { Prisma } from '@prisma/client';
+import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 
 @Injectable()
 export class ForumService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly moderationService: ModerationService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
 
   async findAllPosts(query: SearchPostsDto) {
@@ -108,7 +112,19 @@ export class ForumService {
     });
   }
 
-  createPost(createPostDto: CreatePostDto, userId: number) {
+  async createPost(createPostDto: CreatePostDto, userId: number) {
+    const allowed = await this.rateLimiter.checkLimit(
+      `forum_post:${userId}`,
+      5,
+      600,
+    );
+    if (!allowed) {
+      throw new HttpException(
+        'You are posting too frequently. Please wait before creating another post.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const textToAnalyze =
       `${createPostDto.title}\n${createPostDto.content}`;
 
@@ -233,6 +249,18 @@ export class ForumService {
     createCommentDto: CreateCommentDto,
     userId: number,
   ) {
+    const allowed = await this.rateLimiter.checkLimit(
+      `forum_comment:${userId}`,
+      20,
+      600,
+    );
+    if (!allowed) {
+      throw new HttpException(
+        'You are commenting too frequently. Please wait before commenting again.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
     });
@@ -373,6 +401,18 @@ export class ForumService {
   }
 
   async createReport(createReportDto: CreateReportDto, userId: number) {
+    const allowed = await this.rateLimiter.checkLimit(
+      `forum_report:${userId}`,
+      10,
+      3600,
+    );
+    if (!allowed) {
+      throw new HttpException(
+        'You are submitting too many reports. Please try again later.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     if (createReportDto.targetType === 'post') {
       const post = await this.prisma.post.findUnique({
         where: { id: createReportDto.targetId },

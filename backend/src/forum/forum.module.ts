@@ -4,9 +4,10 @@ import { ForumService } from './forum.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ModerationModule } from '../moderation/moderation.module';
 import { AuthModule } from '../auth/auth.module';
+import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 
 @Module({
-  imports: [PrismaModule, ModerationModule, AuthModule],
+  imports: [PrismaModule, ModerationModule, AuthModule, RateLimiterModule],
   controllers: [ForumController],
   providers: [ForumService],
   exports: [ForumService],
