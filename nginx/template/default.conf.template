@@ -1,5 +1,4 @@
 
-    #limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=admin_api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
     limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
@@ -48,12 +47,6 @@
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
-
-        #location /api/ {
-        #    proxy_pass http://backend:8000;
-        #    proxy_set_header Host $host;
-        #    proxy_set_header X-Real-IP $remote_addr;
-        #}
 
         location /api/admin {
             proxy_pass http://backend:8000;
@@ -126,6 +119,12 @@
 
         location /prometheus/ {
             proxy_pass http://prometheus:9090;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /kibana/ {
+            proxy_pass http://kibana:5601;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
         }

@@ -1,0 +1,22 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      hints.default_config:
+        type: container
+        paths:
+          - /var/lib/docker/containers/${data.container.id}/*.log
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/modsecurity/audit.log
+    fields:
+      log_type: modsec_audit
+    fields_under_root: true
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info

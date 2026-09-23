@@ -88,6 +88,15 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  modsec-audit-init:
+    image: alpine
+    command:
+      - sh
+      - -c
+      - touch /var/log/modsecurity/audit.log && chown -R 101:101 /var/log/modsecurity
+    volumes:
+      - modsec-audit-log:/var/log/modsecurity
+
   nginx:
     container_name: nginx
     image: owasp/modsecurity-crs:4-nginx-202606261106
@@ -102,11 +111,14 @@ services:
       - ./nginx/certs:/etc/nginx/certs
       - ./nginx/modsecurity/before-crs.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
       - ./nginx/modsecurity/exclusions.conf:/etc/modsecurity.d/owasp-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
+      - modsec-audit-log:/var/log/modsecurity
     depends_on:
       backend:
         condition: service_healthy
       frontend:
         condition: service_healthy
+      modsec-audit-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/stub_status"]
       interval: 5s
@@ -124,6 +136,7 @@ services:
       PARANOIA: "2"
       BLOCKING_PARANOIA: "2"
       MODSEC_AUDIT_LOG_PARTS: "AIJDEFHZ"
+      MODSEC_AUDIT_LOG: /var/log/modsecurity/audit.log
     restart: unless-stopped
 
   nginx_exporter:
@@ -326,6 +339,80 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  elasticsearch:
+    container_name: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.18
+    networks:
+      - transcendence
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    mem_limit: 1g
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  logstash:
+    container_name: logstash
+    image: docker.elastic.co/logstash/logstash:8.19.18
+    networks:
+      - transcendence
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m"
+    mem_limit: 512m
+    volumes:
+      - ./logging/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:8.19.18
+    networks:
+      - transcendence
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      SERVER_BASEPATH: "/kibana"
+      SERVER_REWRITEBASEPATH: "true"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "y3F/ugocszBablaOsTU8y1WWvLMyvp9NmgSf+vIjjoo="
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/kibana/api/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  filebeat:
+    container_name: filebeat
+    build:
+      context: ./logging/filebeat
+    user: root
+    networks:
+      - transcendence
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - modsec-audit-log:/var/log/modsecurity:ro
+    depends_on:
+      logstash:
+        condition: service_started
+      modsec-audit-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   grafana-db:
   prometheus-data:
@@ -334,6 +421,8 @@ volumes:
   vault-data:
   vault-keys:
   vault-approle:
+  elasticsearch-data:
+  modsec-audit-log:
 
 networks:
   transcendence:
