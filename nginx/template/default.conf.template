@@ -124,6 +124,13 @@
         }
 
         location /kibana/ {
+            modsecurity on;
+            modsecurity_rules '
+                SecRuleRemoveById 932236
+                SecRuleRemoveById 932240
+                SecRuleRemoveById 942220
+                SecRuleRemoveById 942340
+            ';
             proxy_pass http://kibana:5601;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
