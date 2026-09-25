@@ -156,6 +156,7 @@ services:
     command: ["chown", "-R", "100:1000", "/vault/data"]
     volumes:
       - vault-data:/vault/data
+
   vault:
     container_name: vault
     image: hashicorp/vault
@@ -325,6 +326,30 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  postgres_backup:
+    container_name: postgres_backup
+    image: postgres:16
+    networks:
+      - transcendence
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BACKUP_DIR: /backups/postgres
+      RETENTION_DAYS: 7
+    volumes:
+      - ./backups/postgres:/backups/postgres
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "while true; do
+        /usr/local/bin/backup-postgres.sh;
+        sleep 86400;
+      done"
     restart: unless-stopped
 
   postgres_exporter:
