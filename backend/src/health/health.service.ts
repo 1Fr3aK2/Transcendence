@@ -11,38 +11,50 @@ export class HealthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly http: HttpService,
-  ) {}
+  ) { }
 
-  async checkDatabase() {
-    await this.prisma.$queryRaw`SELECT 1`;
+  async checkDatabase(): Promise<boolean> {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  async checkRedis() {
+  async checkRedis(): Promise<boolean> {
     const client = createClient({
       url: process.env.REDIS_URL,
     });
 
-    await client.connect();
-
-    const pong = await client.ping();
-
-    await client.disconnect();
-
-    if (pong !== 'PONG') {
-      throw new Error('Redis is down');
+    try {
+      await client.connect();
+      const pong = await client.ping();
+      return pong === 'PONG';
+    } catch {
+      return false;
+    } finally {
+      if (client.isOpen) {
+        await client.disconnect();
+      }
     }
   }
 
-  //changes made by Rafael at 03/08/2026 (checkVault && firstvaluefrom)
-  async checkVault() {
-    const httpsAgent = new https.Agent({
-      ca: fs.readFileSync(process.env.VAULT_CACERT),
-    });
+  async checkVault(): Promise<boolean> {
+    try {
+      const httpsAgent = new https.Agent({
+        ca: fs.readFileSync(process.env.VAULT_CACERT),
+      });
 
-    await firstValueFrom(
-      this.http.get(`${process.env.VAULT_ADDR}/v1/sys/health`, {
-        httpsAgent,
-      }),
-    );
+      await firstValueFrom(
+        this.http.get(`${process.env.VAULT_ADDR}/v1/sys/health`, {
+          httpsAgent,
+        }),
+      );
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
