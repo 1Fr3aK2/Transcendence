@@ -1,36 +1,31 @@
-import {
-	Controller,
-	Get,
-	ServiceUnavailableException,
-  } from '@nestjs/common';
-  import { HealthService } from './health.service';
-  
-  @Controller('health')
-  export class HealthController {
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { HealthService } from './health.service';
+
+@Controller('health')
+export class HealthController {
 	constructor(
-	  private readonly healthService: HealthService,
-	) {}
-  
+		private readonly healthService: HealthService,
+	) { }
+
 	@Get()
 	async check() {
-	  try {
-	    await this.healthService.checkDatabase();
-	    await this.healthService.checkRedis();
-		await this.healthService.checkVault();
+		const database = await this.healthService.checkDatabase();
+		const redis = await this.healthService.checkRedis();
+		const vault = await this.healthService.checkVault();
 
-	    return {
-	      status: 'ok',
-	      database: 'up',
-	      redis: 'up',
-		  vault: 'up',
+		const status = database && redis && vault ? 'ok' : 'error';
+
+		const result = {
+			status,
+			database: database ? 'up' : 'down',
+			redis: redis ? 'up' : 'down',
+			vault: vault ? 'up' : 'down',
 		};
-	  } catch {
-	    throw new ServiceUnavailableException({
-	      status: 'error',
-	      database: 'down',
-	      redis: 'down',
-	    });
-	  }
+
+		if (status === 'error') {
+			throw new ServiceUnavailableException(result);
+		}
+
+		return result;
 	}
-	
-  }
+}

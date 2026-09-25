@@ -58,6 +58,13 @@ logs:
 	@echo "Check specific service logs (ex: make logs SERVICE=backend)"
 	$(COMPOSE) logs -f $(SERVICE)
 
+update: deps
+	@echo "Updating everything and bringing all containers up to date..."
+	$(SCRIPT_CERTS)
+	$(COMPOSE) build
+	$(COMPOSE) up -d --remove-orphans
+	@echo "Transcendence updated and running!"
+
 exec:
 	@echo "Entering on the container (ex: make exec SERVICE=backend)"
 	$(COMPOSE) exec $(SERVICE) sh
@@ -65,4 +72,4 @@ exec:
 re: fclean deps build up
 	@echo "Restarting all the containers..."
 
-.PHONY: all build deps up down dev clean fclean logs exec re
+.PHONY: all build deps up down dev clean update fclean logs exec re
