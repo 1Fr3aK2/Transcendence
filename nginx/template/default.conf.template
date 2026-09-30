@@ -130,6 +130,7 @@
                 SecRuleRemoveById 932240
                 SecRuleRemoveById 942220
                 SecRuleRemoveById 942340
+                SecRuleRemoveById 934190
             ';
             proxy_pass http://kibana:5601;
             proxy_set_header Host $host;
