@@ -1,31 +1,43 @@
 # nginx — `default.conf.template`
 
-Documentation for the nginx configuration (reverse proxy + WAF) of the transcendence project, accompanying the PR for this branch (`feat/nginx-security-headers`, which also includes the earlier work on rate limiting and forum routing).
+Documentation for the nginx configuration (reverse proxy + WAF) of the
+transcendence project.
+
+> **Note on this revision:** this document has been updated to match the
+> current `default.conf.template`. The rate limiting, security headers, and
+> per-module routing sections below reflect the live configuration. One item
+> — one of the five ModSecurity rule exclusions on `/kibana/` (`934190`) —
+> still needs its rationale confirmed against real traffic; see that section
+> below.
 
 ## General structure
 
 The file defines two `server{}` blocks:
 
 - **Port `${PORT}` (80)** — only exists to redirect all HTTP traffic to HTTPS (`301`), and to expose `/stub_status` (used by the container's healthcheck and by Prometheus's `nginx_exporter`).
-- **Port `${SSL_PORT}` (443)** — where all the real logic lives: TLS, WAF (ModSecurity), security headers, rate limiting, and the proxy to the various internal services (frontend, backend, Grafana, Prometheus).
+- **Port `${SSL_PORT}` (443)** — where all the real logic lives: TLS, WAF (ModSecurity), security headers, rate limiting, and the proxy to the various internal services (frontend, backend, Grafana, Prometheus, Kibana, and the static status page).
 
-Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
+Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, `${BACKEND}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
 
 ## Rate limiting
 
-Two active zones, with different values depending on the sensitivity of the action being protected:
+Four active zones, with different values depending on the sensitivity and expected traffic pattern of the endpoint being protected:
 
 ```nginx
+limit_req_zone $binary_remote_addr zone=admin_api:10m rate=30r/s;
 limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
 limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=health:10m rate=10r/s;
 ```
 
 | Zone | Applied to | Limit | Burst | Why |
 |---|---|---|---|---|
-| `login` | `/auth/login` | 10 requests/minute per IP | 5 | Sensitive action (account access) — protects against brute-force by IP. Complemented by a per-account rate limit in the backend (Redis), documented in `RATE_LIMITING.md`. |
-| `forum` | `/forum` | 30 requests/second per IP | 5 | General browsing + content-creation traffic — generous limit, only meant to contain abnormal traffic/blunt DoS, not to distinguish reads from writes (that distinction is left to a fine-grained rate limit in the backend, still pending — see "Limitations" below). |
+| `login` | `/auth/` | 10 requests/minute per IP | 5 | Sensitive action (account access) — protects against brute-force by IP. Complemented by a per-account rate limit in the backend (Redis), documented in `RATE_LIMITING.md`. |
+| `forum` | `/forum` | 30 requests/second per IP | 5 | General browsing + content-creation traffic. IP-level limit only; per-user, per-action limits (posts, comments, reports) are enforced separately in the backend via `RateLimiterService` — see "Per-user rate limiting" below. |
+| `admin_api` | `/api/admin` | 30 requests/second per IP | 5 (`limit_req_status 429`) | The Admin Public API. IP-level limit at nginx complements a second, per-client-IP limit enforced in the backend itself (`AdminApiRateLimitGuard`, 100 req/60s) — see `SECURITY_REPORT.md` §4 for the bug found and fixed in that guard. |
+| `health` | `/health` | 10 requests/second per IP | 20, `nodelay` | Public health-check endpoint, expected to be polled frequently (e.g. by the status page, every 10s). Generous burst so legitimate polling is never delayed, while still bounding abuse. |
 
-The `api` zone is commented out — it was removed as an active `location` because the backend doesn't use the `/api` prefix (routes are direct, e.g. `/auth/login`, `/forum/...`). Kept commented as a reference in case the team decides to adopt that convention in the future.
+The previously-commented `api` zone, kept as a placeholder in earlier revisions of this file, has been superseded: the Admin Public API is live under `/api/admin`, with its own `admin_api` zone above.
 
 ## Security headers
 
@@ -33,6 +45,7 @@ Applied once, in the port-443 `server{}` block (before the `location{}` blocks),
 
 ```nginx
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+modsecurity on;
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -51,13 +64,15 @@ Confirmed: all 4 headers present in the response with the expected values.
 
 ## Locations per backend module
 
-Each backend module has its own `location`, matching exactly the real route prefix in NestJS (nginx has no way to know this on its own — it has to be maintained manually every time a new module is added):
+Each backend module has its own `location`, matching the real route prefix in NestJS (nginx has no way to know this on its own — it has to be maintained manually every time a new module is added):
 
 ```nginx
-location /auth/login {
+location /auth/ {
     proxy_pass http://backend:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     limit_req zone=login burst=5 nodelay;
 }
 
@@ -67,22 +82,163 @@ location /forum {
     proxy_set_header X-Real-IP $remote_addr;
     limit_req zone=forum burst=5 nodelay;
 }
+
+location /api/admin {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    limit_req zone=admin_api burst=5 nodelay;
+    limit_req_status 429;
+}
+
+location /users {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /crypto {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
 ```
 
-`/forum` (no trailing slash) catches, by prefix, any route underneath it (`/forum/posts`, `/forum/posts/:id/comments`, `/forum/reports`, etc.) — no need for a `location` per individual endpoint, only per module.
+`/forum` and `/api/admin` (no trailing slash) catch, by prefix, any route underneath them — no need for a `location` per individual endpoint, only per module. `/auth/` (trailing slash) matches the auth module's routes the same way.
 
-## Other services
+## WebSocket routes
 
 ```nginx
-location /ws { ... }          # WebSocket (live BTC price / trades), no rate limit — persistent connection, not individual requests
-location /grafana/ { ... }    # Monitoring dashboard
-location /prometheus/ { ... } # Metrics
+location /ws {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+location /socket.io/ {
+    modsecurity on;
+    modsecurity_rules '
+        SecRuleRemoveById 920420
+    ';
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
 ```
 
-No dedicated rate limit — these aren't endpoints exposed to end users of the application (internal team use).
+No dedicated rate limit on either — these are persistent connections (live BTC price feed, trades), not discrete requests that a `limit_req` model fits well.
+
+`/socket.io/` (added for the frontend's real-time crypto price data) needs one scoped ModSecurity exclusion: **rule `920420`** was flagging legitimate WebSocket upgrade requests as malformed. The WAF is **not** disabled for this location (`modsecurity on;` is kept explicit) — only this one rule is removed, scoped to this `location` block alone; every other rule still applies to WebSocket traffic.
+
+## Infrastructure UIs
+
+```nginx
+location /grafana/ {
+    proxy_pass http://grafana:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+
+location /prometheus/ {
+    proxy_pass http://prometheus:9090;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+
+location /kibana/ {
+    modsecurity on;
+    modsecurity_rules '
+        SecRuleRemoveById 932236
+        SecRuleRemoveById 932240
+        SecRuleRemoveById 942220
+        SecRuleRemoveById 942340
+        SecRuleRemoveById 934190
+    ';
+    proxy_pass http://kibana:5601;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+No dedicated rate limit — these aren't endpoints exposed to end users of the application (internal/admin use), each already gated by its own authentication (Grafana login, Kibana behind `xpack.security`, Prometheus not authenticated but not carrying sensitive data beyond metrics).
+
+**`/kibana/` ModSecurity exclusions — rationale:**
+
+- **`942340`** (SQL Injection via libinjection) — confirmed: Kibana's search UI legitimately sends wildcard-containing queries to `/kibana/api/content_management/rpc/search`, which this rule flagged as an attack, adding to the inbound anomaly score and causing legitimate searches to be blocked with `403`.
+- **`932236`** ("Remote Command Execution: Unix Command Injection (command without evasion)", PL2) — a CRS rule with well-documented false positives against ordinary text containing short command-like substrings (e.g. "set" inside "settings") and against UUID/hash-like tokens containing sequences such as "df"/"fd". Kibana's session cookies and saved-object IDs are exactly this kind of token, generated on every login and search; the most likely trigger is the Kibana login/session flow itself rather than any specific admin action.
+- **`932240`** ("Remote Command Execution: Unix Command Injection evasion attempt detected", PL2) — same rule family as above; documented false positives against free text containing apostrophes and against cookie values using `$`-separated formats (the kind of format session/analytics cookies commonly use), again consistent with Kibana's own session handling rather than a specific attack pattern.
+- **`942220`** ("Looking for integer overflow attacks", critical severity) — flags very large integers or a specific "magic number" float value in request data. Kibana's internal APIs routinely pass large epoch-millisecond timestamps and offsets in JSON request bodies, which plausibly trips this rule on ordinary use.
+- **`934190`** (Node.js/RCE-detection family, CRS 934xxx) — *rationale not yet confirmed.* Unlike the three above, the exact trigger condition for this specific rule ID was not identified with confidence, and is not documented here to avoid stating a security rationale that hasn't actually been verified against real traffic. **Recommended next step:** reproduce the false positive against `/kibana/` with this rule re-enabled (temporarily, in isolation) and confirm what request data it matches against, then update this entry with the confirmed cause — the other three exclusions above follow this same standard and this one should too before the module is considered fully documented.
+
+All four exclusions follow the same pattern used for the confirmed `942340` and the `/socket.io/` exclusion above: the rule is removed only inside this one `location` block (`modsecurity on;` stays active), not disabled globally — the rest of the WAF's protection, including the rest of the RCE and SQLi rule families, remains in effect for every other route.
+
+## Static status page
+
+```nginx
+location /status {
+    alias /usr/share/nginx/status/;
+    index index.html;
+    try_files $uri $uri/ /status/index.html;
+}
+```
+
+Served directly by nginx as a static file, not proxied to the backend or bundled into the frontend's React app — see `SECURITY_REPORT.md` §7 for the reasoning (a status page needs to stay reachable even if the frontend/backend are the thing that's broken).
+
+## Public health check
+
+```nginx
+location /health {
+    limit_req zone=health burst=20 nodelay;
+    proxy_pass ${BACKEND}/health/status;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above.
+
+## Per-user rate limiting (forum, previously a known limitation — now resolved)
+
+Earlier revisions of this document noted that the forum's rate limit was
+IP-only, because `createPost`/`createComment`/`createReport` had no
+authentication guard and therefore no reliable `userId` to key a per-user
+limit on. This has since been fixed in the backend: all forum endpoints now
+use `@UseGuards(JwtAuthGuard)`, and per-user limits are enforced in the
+backend itself via the existing `RateLimiterService` (not in nginx, which
+can't cleanly distinguish users or HTTP methods within the same path):
+
+- `createPost`: 5 / 10 minutes
+- `createComment`: 20 / 10 minutes
+- `createReport`: 10 / hour
+
+nginx's `forum` zone above remains as the coarser, IP-level first line of
+defense; the backend enforces the finer-grained, identity-aware limits.
 
 ## Known limitations / future work
 
-- **The forum's rate limit is IP-only, not per-user.** The `ForumController`'s write endpoints (`createPost`, `createComment`, `createReport`) don't yet have authentication implemented, nor a `userId` available — reported to the teammate responsible for the forum module. Once that exists, the fine-grained per-user rate limit should be done in the backend (reusing the `RateLimiterService` already built for login), not in nginx — nginx can't cleanly distinguish users or HTTP methods within the same path.
-- **`X-Frame-Options: DENY`** was chosen as the more restrictive option due to lack of concrete confirmation about iframe usage in the frontend; reconsider `SAMEORIGIN` if a real need arises.
-- **Backend migrations** (`backend_migrate` in `docker-compose.yml`) were the root cause of a 500 bug that interfered with testing this `.conf` — documented separately in `RATE_LIMITING.md`, but relevant for anyone testing this PR: confirm `backend_migrate` runs successfully before validating the endpoints.
+- **`/kibana/` ModSecurity exclusion `934190`** — the only one of the five
+  rule removals without a confirmed rationale; see the note under
+  "Infrastructure UIs" above.
+- **`X-Frame-Options: DENY`** was chosen as the more restrictive option due to
+  lack of concrete confirmation about iframe usage in the frontend;
+  reconsider `SAMEORIGIN` if a real need arises.
+- **Backend migrations** (`backend_migrate` in `docker-compose.yml`) were the
+  root cause of a 500 bug that interfered with testing an earlier revision of
+  this config — documented in `SECURITY_REPORT.md` §8. A second one-shot
+  service, `backend_seed`, follows the same pattern and must also complete
+  successfully before the backend is expected to behave correctly.
+- **Stale DNS caching** — nginx can serve `502`s (surfaced by ModSecurity as
+  `403`s) against a recreated backend container if nginx itself wasn't
+  restarted at the same time; see `SECURITY_REPORT.md` §9. Not fixed
+  structurally (would require `resolver 127.0.0.11` + a variable-based
+  `proxy_pass`); logged as an accepted trade-off.

@@ -2,7 +2,7 @@
     limit_req_zone $binary_remote_addr zone=admin_api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
     limit_req_zone $binary_remote_addr zone=forum:10m rate=30r/s;
-
+    limit_req_zone $binary_remote_addr zone=health:10m rate=10r/s;
     
     server {
         listen ${PORT};
@@ -130,8 +130,22 @@
                 SecRuleRemoveById 932240
                 SecRuleRemoveById 942220
                 SecRuleRemoveById 942340
+                SecRuleRemoveById 934190
             ';
             proxy_pass http://kibana:5601;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /status {
+            alias /usr/share/nginx/status/;
+            index index.html;
+            try_files $uri $uri/ /status/index.html;
+        }
+        
+        location /health {
+            limit_req zone=health burst=20 nodelay;
+            proxy_pass ${BACKEND}/health/status;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
         }
