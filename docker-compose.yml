@@ -113,6 +113,7 @@ services:
       - ./nginx/modsecurity/before-crs.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
       - ./nginx/modsecurity/exclusions.conf:/etc/modsecurity.d/owasp-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
       - modsec-audit-log:/var/log/modsecurity
+      - ./nginx/status:/usr/share/nginx/status:ro
     depends_on:
       backend:
         condition: service_healthy
