@@ -3,12 +3,12 @@
 Documentation for the brute-force and DoS protection implemented on the login endpoint. Combines two complementary mechanisms: rate limiting by IP (nginx) and rate limiting by account (backend + Redis).
 
 > **Note on this revision:** the "Known simplifications / future work" section
-> has been updated — several items listed there have since been resolved. One
-> discrepancy is flagged rather than silently resolved: the code snippet below
-> keys the Redis counter on `dto.email`, while `AUTH_HARDENING_REPORT.md`
-> (describing the fix for the global-lockout bug) refers to the same key as
-> built from `dto.username`. Confirm which field the login DTO actually uses
-> before treating this document as fully accurate.
+> has been updated — several items listed there have since been resolved. The
+> `dto.email` key shown below is confirmed correct (matches the team's
+> Authentication Module doc, which documents `POST /auth/login` taking
+> `email`/`password`) — `AUTH_HARDENING_REPORT.md` has been corrected to
+> match, resolving a discrepancy that existed in an earlier revision of this
+> document.
 
 ## Why two mechanisms
 
