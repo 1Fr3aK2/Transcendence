@@ -196,23 +196,24 @@ curl http://localhost:8200/v1/secret/data/postgres
 
 **Conclusion (original, dev-mode Vault)**: Vault rejects any unauthenticated access to secrets. A valid token is required for any operation.
 
-> ⚠️ **Needs re-verification.** This test was run against Vault in dev mode,
-> communicating over plain HTTP. Vault has since been hardened (see
-> `SECURITY_REPORT.md` §3 / `AUTH_HARDENING_REPORT.md`): it now runs with a
-> real `operator init`/unseal and TLS (`VAULT_CACERT`). The `curl` command
-> above, using `http://` against port `8200`, may now fail at the connection
-> level (TLS required) rather than return the documented
-> `{"errors":["permission denied"]}` body — these are two different
-> failure modes with different security implications (one confirms
-> authorization is enforced; the other only confirms the port isn't speaking
-> plain HTTP). **This test should be re-run against the current Vault setup,
-> using the CA certificate under `./vault/certs`, before this document is
-> treated as fully current** — e.g.:
+> ⚠️ **Confirmed to need updating** — not just suspected. `VAULT_PRODUCTION.md`
+> (bug #7) documents that a plain `http://` request against port `8200`
+> against the current, hardened Vault produces
+> `TLS handshake error: client sent an HTTP request to an HTTPS server` — a
+> protocol-level rejection, not the `{"errors":["permission denied"]}` JSON
+> body this test originally documented. The command and result above are
+> **stale** and describe dev-mode Vault only.
+>
+> The corrected command, using the CA certificate Vault now requires:
 > ```bash
 > curl --cacert ./vault/certs/ca.pem https://localhost:8200/v1/secret/data/postgres
 > ```
-> and the result above updated with whatever is actually observed, rather
-> than assumed to be unchanged.
+> This has not yet been run and its actual output recorded here — Vault's
+> authorization check happens independently of TLS, so `{"errors":["permission
+> denied"]}` is the expected outcome by the same logic as the original test,
+> but "expected by reasoning" isn't the same as "observed" for a security
+> test. **Run the corrected command and replace this note with the real
+> result** before treating Test 8 as passing again.
 
 ---
 
@@ -227,7 +228,7 @@ curl http://localhost:8200/v1/secret/data/postgres
 | 5 | WAF/nginx | XSS | 403 Forbidden | ✅ Blocked |
 | 6 | WAF/nginx | Path Traversal | 404 Not Found | ✅ Secure |
 | 7 | WAF/nginx | Command Injection | 403 Forbidden | ✅ Blocked |
-| 8 | Vault | Access without token | Permission denied (dev-mode result) | ⚠️ Needs re-verification against hardened Vault + TLS |
+| 8 | Vault | Access without token | Permission denied (dev-mode result; now confirmed stale — HTTP against port 8200 fails at the TLS level, not with this JSON body) | ⚠️ Needs re-run with `--cacert` against HTTPS to get a current result |
 
 ---
 
