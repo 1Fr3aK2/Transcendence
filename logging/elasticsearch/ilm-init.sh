@@ -12,15 +12,6 @@ curl -sf -u "elastic:$ELASTIC_PASSWORD" -X PUT "http://elasticsearch:9200/_ilm/p
   -d '{
     "policy": {
       "phases": {
-        "hot": {
-          "min_age": "0ms",
-          "actions": {
-            "rollover": {
-              "max_age": "1d",
-              "max_size": "5gb"
-            }
-          }
-        },
         "delete": {
           "min_age": "14d",
           "actions": {
@@ -38,7 +29,8 @@ curl -sf -u "elastic:$ELASTIC_PASSWORD" -X PUT "http://elasticsearch:9200/_index
     "index_patterns": ["transcendence-logs-*"],
     "template": {
       "settings": {
-        "index.lifecycle.name": "transcendence-logs-policy"
+        "index.lifecycle.name": "transcendence-logs-policy",
+        "index.number_of_replicas": "0"
       }
     }
   }'
@@ -50,7 +42,8 @@ curl -sf -u "elastic:$ELASTIC_PASSWORD" -X PUT "http://elasticsearch:9200/_index
     "index_patterns": ["waf-audit-*"],
     "template": {
       "settings": {
-        "index.lifecycle.name": "transcendence-logs-policy"
+        "index.lifecycle.name": "transcendence-logs-policy",
+        "index.number_of_replicas": "0"
       }
     }
   }'

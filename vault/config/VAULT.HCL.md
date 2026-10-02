@@ -132,8 +132,9 @@ and does, in order:
    secret) from environment variables passed to `vault_init`.
 5. **Load the policy** (`backend-policy`) and **enable AppRole**.
 6. **Create `backend-role`** with `token_ttl=1h`, `token_max_ttl=4h` and
-   `secret_id_ttl=24h`.
+   `secret_id_ttl=0` (no expiry — see Known limitations for the rationale).
 7. **Write `role_id` and `secret_id`** to `/vault/approle` (mode `600`).
+8. **Revoke the root token** — it is no longer needed after bootstrap.
 
 The keys live in the `vault-keys` volume and the AppRole credentials in the
 `vault-approle` volume. Both are created root-owned, so `vault-keys-init` and
@@ -165,23 +166,34 @@ the AppRole credentials.
 
 ## Known limitations
 
-These are accepted trade-offs for a local, single-node project, but worth
-knowing when explaining the setup:
+These are the remaining accepted trade-offs for a local, single-node project:
 
 - **Unseal keys and root token sit together** in `init.json` on the
   `vault-keys` volume. This is what lets the stack unseal itself
   automatically, but it defeats the purpose of Shamir's secret sharing: anyone
   with access to that volume has everything. In a real deployment the keys
   would be split between different people, or replaced by auto-unseal through
-  a cloud KMS or HSM.
-- **The init script uses the root token** for all its operations. Fine for a
-  bootstrap job, but the root token should be revoked in a real deployment
-  after setup.
-- **The `secret_id` expires after 24h** and is only regenerated when
-  `vault_init` runs (on `docker compose up`). A backend that stays up for more
-  than a day and has to log in again with the old `secret_id` will be
-  rejected. Renewing it periodically, or re-running `vault_init`, is needed
-  for long-running deployments.
-- **`./vault/config` and `./vault/certs` are mounted writable** on the
-  `vault` service. Adding `:ro` would be stricter, since Vault only needs to
-  read them.
+  a cloud KMS or HSM. The root token is now revoked after bootstrap (see
+  below), which reduces the impact: an attacker with the volume still has the
+  unseal keys, but no longer has a valid root token ready to use — they would
+  need to run `vault operator generate-root` (an auditable operation) to
+  obtain a new one.
+- **The `secret_id` never expires** (`secret_id_ttl=0`). The previous value
+  of `24h` caused the backend to fail re-authentication after a day without a
+  `docker compose up`. Since the `secret_id` is regenerated on every
+  `vault_init` run anyway (each `docker compose up` produces a new random
+  value), a time-based TTL adds operational fragility without meaningful
+  security benefit in this setup. Setting it to `0` removes the expiry.
+- **`./vault/config` and `./vault/certs` were previously mounted writable**
+  on the `vault` service. Fixed: both are now mounted with `:ro` in
+  `docker-compose.yml`. Vault only reads these files; the stricter mount
+  prevents any in-container process from modifying its own configuration or
+  TLS certificates.
+
+## Changes applied to resolve the previous limitations
+
+| Was | Now | File |
+|-----|-----|------|
+| `secret_id_ttl=24h` | `secret_id_ttl=0` | `vault-init.sh` |
+| Root token never revoked | Revoked at end of bootstrap (step 10) | `vault-init.sh` |
+| Config/certs mounted writable | Mounted with `:ro` | `docker-compose.yml` |

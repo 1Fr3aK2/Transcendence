@@ -168,8 +168,8 @@ services:
       VAULT_ADDR: ${VAULT_ADDR}
       VAULT_CACERT: ${VAULT_CACERT}
     volumes:
-      - ./vault/config:/etc/vault/config
-      - ./vault/certs:/etc/vault/certs
+      - ./vault/config:/etc/vault/config:ro
+      - ./vault/certs:/etc/vault/certs:ro
       - vault-data:/vault/data
     healthcheck:
       test: ["CMD-SHELL", "vault status; [ $? -ne 1 ]"]

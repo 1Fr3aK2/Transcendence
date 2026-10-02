@@ -63,17 +63,13 @@ matches yet, which is the normal case on a first run.
 
 | Phase  | Condition                                   | Action                          |
 |--------|---------------------------------------------|---------------------------------|
-| Hot    | From creation                               | Rollover at 1 day **or** 5 GB   |
-| Delete | 14 days after the rollover happened         | Delete the index                |
+| Delete | 14 days after index creation                | Delete the index                |
 
 Both log families (`transcendence-logs-*` and `waf-audit-*`) share the same
 policy, so application logs and WAF audit logs have the same retention.
 
-Two details worth knowing:
+A detail worth knowing:
 
-- When a rollover action is defined, the delete phase's `min_age` is counted
-  **from the rollover**, not from the index creation. An index can therefore
-  live for up to roughly 15 days before it is removed.
 - ILM does not act instantly: Elasticsearch evaluates policies on a periodic
   poll (10 minutes by default), so deletions can lag slightly behind the
   configured age.
@@ -91,24 +87,11 @@ Two details worth knowing:
 
 These are worth knowing before the evaluation.
 
-- **Rollover needs a write alias or a data stream.** The index templates here
-  define neither, and the script does not set a rollover alias. If Logstash
-  writes to plain date-named indices (for example one index per day), the
-  rollover action cannot run, the index goes into an ILM error state in the hot
-  phase, and the delete phase is never reached, which means retention silently
-  does not work. This depends on how the Logstash output is configured, so it
-  must be checked with the `_ilm/explain` API. Two ways to resolve it:
-  use data streams or a rollover alias so the rollover action is valid, or drop
-  the rollover action and rely on the daily index names, keeping only the
-  delete phase (then `min_age` counts from index creation).
 - **Retention, not archiving.** The policy deletes after 14 days; it does not
   keep a copy anywhere. The subject mentions "retention and archiving
   policies", so be ready to explain what "archiving" means in this setup, or
   extend it (for example with snapshots to a repository, or a warm/cold phase
   before deletion).
-- **Single node.** New indices default to one replica, which can never be
-  allocated on a single node, so they report a yellow status. Setting the
-  number of replicas to 0 in the templates avoids this.
 - **Superuser credentials.** The script authenticates as the `elastic`
   superuser. That is acceptable for a bootstrap job, but a dedicated role with
   only the ILM and template privileges would follow least privilege more
