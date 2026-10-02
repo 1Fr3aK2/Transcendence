@@ -79,9 +79,14 @@ common attack vectors. Full detail in `SECURITY_TESTING.md`.
 
 **Gaps noted in the original pass — status updated:**
 - ~~Vault dev mode (in-memory, no real seal)~~ — **resolved**, see Section 3.
-- Exposed Redis/Postgres ports, self-signed certificates, root token handling
-  remain accepted trade-offs for this project's scope (not production
-  deployment); documented rather than silently ignored.
+- ~~Vault root token used directly, not scoped~~ — **resolved.**
+  `vault_init.sh` now revokes the root token automatically once bootstrap
+  (secrets, policy, AppRole) completes; the backend only ever authenticates
+  with a scoped AppRole token afterwards. See Section 3 and
+  `VAULT_PRODUCTION.md`, "Idempotent bootstrap and root token revocation".
+- Exposed Redis/Postgres ports and self-signed certificates remain accepted
+  trade-offs for this project's scope (not production deployment);
+  documented rather than silently ignored.
 
 ---
 
@@ -130,6 +135,21 @@ now fails fast (throws at startup) if `JWT_SECRET` is not set, rather than
 running with a known, guessable signing key.
 
 Full detail: `AUTH_HARDENING_REPORT.md`.
+
+**A further hardening pass** on `vault-init.sh` removed the root token from
+day-to-day operation entirely: once the five secrets, the policy, and the
+AppRole are provisioned, the script now revokes the root token it used to
+do so. An idempotent bootstrap-check (comparing whether the saved root
+token is still valid against whether the AppRole credentials already exist)
+makes this safe across restarts — a `vault_init` re-run after a plain
+`vault` restart now only unseals and exits, without attempting to
+re-provision anything with a token that's already gone. The AppRole's
+`secret_id` was also changed from a 24-hour TTL to never expiring,
+removing a previously-documented limitation around long-running backend
+instances. Full detail, including the correct way to update a Vault secret
+now that the root token isn't available by default
+(`vault operator generate-root -init`, using the still-valid unseal key
+shares): `VAULT_PRODUCTION.md`.
 
 ---
 

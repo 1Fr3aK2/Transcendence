@@ -40,7 +40,7 @@ echo "PING" | nc localhost 6379
 
 **Conclusion**: Redis rejects any command without prior authentication. The `--requirepass` flag is correctly configured.
 
-**Note**: Port `6379` is intentionally not exposed to the host in `docker-compose.yml`. The service is only accessible within the internal Docker network (`transcendence`), preventing external network attacks.
+**Note**: Port `6379` is exposed on the host to make local development easier. In production, the `ports` section for Redis should be removed from the compose file — the service should only be accessible within the internal Docker network (`transcendence`).
 
 ---
 
@@ -232,15 +232,15 @@ curl http://localhost:8200/v1/secret/data/postgres
 
 ---
 
-## Design Notes and Production Recommendations
+## Known Limitations and Production Recommendations
 
 | Item | Current State | Production Recommendation |
 |---|---|---|
-| Redis port exposed (`6379`) | **Resolved** — Not exposed on host | Already properly secured (accessible only on the internal Docker network) |
-| Postgres port exposed (`5432`) | **Resolved** — Not exposed on host | Already properly secured (accessible only on the internal Docker network) |
+| Redis port exposed (`6379`) | Exposed on host | Remove `ports` from compose — accessible only on the Docker network |
+| Postgres port exposed (`5432`) | Exposed on host | Remove `ports` from compose |
 | ~~Vault in dev mode~~ | **Resolved** — Vault now runs with a real `operator init -key-shares=5 -key-threshold=3`, persistent storage, and TLS; see `SECURITY_REPORT.md` §3 | — |
 | SSL certificates | `mkcert` (self-signed, local) | Use Let's Encrypt or a real certificate |
-| Vault root token | Used directly for initial bootstrap | Create tokens with limited, per-service permissions beyond initial setup |
+| ~~Vault root token~~ | **Resolved** — the root token is now used only for the initial bootstrap (secrets, policy, AppRole) and automatically revoked by `vault_init.sh` immediately afterward; every subsequent authentication uses a scoped AppRole token. See `VAULT_PRODUCTION.md`, "Idempotent bootstrap and root token revocation" | — |
 | AppRole credentials (RoleID/SecretID) | **Improved** — now persisted to files under the `vault-approle` volume and consumed directly by `backend`/`backend_seed`, rather than only printed to stdout and requiring manual capture; see `SECURITY_REPORT.md` §3 | Confirm these files are never included in any backup or export that leaves the host unencrypted |
 
 ---

@@ -71,8 +71,7 @@ trust the self-signed certificate.
 
 ## `vault-init.sh` changes
 
-The script now handles, in order, before the existing secrets/policy/AppRole
-steps (unchanged from before):
+The script handles, in order:
 
 1. **`vault operator init`** — runs only once. Guarded by checking whether
    `/vault/keys/init.json` (on the `vault-keys` volume) already exists, since
@@ -81,9 +80,18 @@ steps (unchanged from before):
    `sealed: true` (i.e., every restart, since dev-mode's auto-unseal no
    longer applies). Uses 3 of the 5 generated Shamir key shares, read from
    the same `init.json`.
-3. **Enabling the `secret/` KV v2 engine** — dev-mode auto-mounts this;
+3. **Bootstrap-already-done check** — see "Idempotent bootstrap and root
+   token revocation" below. New since the previous revision of this
+   document.
+4. **Enabling the `secret/` KV v2 engine** — dev-mode auto-mounts this;
    production mode doesn't, so it has to be enabled explicitly
    (`vault secrets enable -path=secret -version=2 kv`), idempotently.
+5. **Storing the five secrets** (Postgres, Redis, admin API key, admin
+   account, JWT secret).
+6. **Loading the policy** (`backend-policy`) and **enabling AppRole**.
+7. **Creating `backend-role`**, with `secret_id_ttl=0` — see below.
+8. **Writing `role_id` and `secret_id`** to `/vault/approle`.
+9. **Revoking the root token** — new since the previous revision; see below.
 
 JSON parsing (root token, unseal keys) uses `grep`/`sed`/`cut` rather than
 `jq` — `jq` isn't in the base image, and installing it at runtime via `apk
@@ -108,9 +116,99 @@ no manual step, and no credential visible outside the container boundary
 (not even in `docker compose logs`, now that it's written to a file instead
 of printed).
 
+## `secret_id` no longer expires
+
+**Changed from the previous revision.** `backend-role` was created with
+`secret_id_ttl=24h`, meaning any backend instance staying up for more than a
+day would be rejected on its next AppRole login attempt — flagged as a known
+limitation requiring either periodic renewal or a `vault_init` re-run.
+
+This has been changed to `secret_id_ttl=0` (never expires). This removes
+that limitation entirely for a project of this scope, at the cost of a
+longer-lived credential if the `vault-approle` volume were ever compromised.
+Given the credential is only ever persisted inside the Docker volume
+boundary (never logged, never leaves the host), this trade-off was judged
+acceptable here — worth revisiting if this setup were ever adapted for a
+real multi-host deployment.
+
+## Idempotent bootstrap and root token revocation
+
+**New since the previous revision of this document**, and the most
+behaviorally significant change in this update.
+
+After the five secrets, the policy, and the AppRole are provisioned
+(steps 4–8 above), the script now **revokes the Vault root token it used to
+do all of this** (`vault token revoke`). This closes a real gap noted
+previously only as an accepted limitation ("the root token should be
+revoked in a real deployment after setup") — it is now actually done,
+automatically, every time.
+
+To make this safe across restarts, a new check runs right after unsealing
+(step 3), before anything else:
+
+- The script attempts `vault token lookup` using the root token read from
+  `init.json`.
+- **If that succeeds** (first-ever run, or any run before the token was
+  revoked), the script proceeds normally through provisioning and then
+  revokes the token at the end, same as before.
+- **If it fails** (the root token was already revoked by a previous
+  successful run) **and** `role_id`/`secret_id` already exist on the
+  `vault-approle` volume, the script treats bootstrap as already complete
+  and exits `0` immediately — steps 4–9 are skipped entirely.
+- **If it fails and the AppRole files are missing**, this is treated as an
+  inconsistent state (a revoked root token but no provisioned AppRole,
+  which shouldn't normally happen) and the script exits `1` with a message
+  pointing at `docker compose down -v` as the recovery path.
+
+### Practical consequence: updating a secret value after the first bootstrap
+
+Before this change, the pattern established earlier in this project for
+syncing a changed `.env` value into Vault was: re-run `vault_init`
+(`docker compose up -d vault_init`), since every step, including `vault kv
+put`, ran unconditionally and idempotently on every invocation.
+
+**This is no longer sufficient once bootstrap has completed once and the
+root token has been revoked** — a subsequent `vault_init` run now exits
+early at the bootstrap-check step and never reaches the `vault kv put`
+calls, so a changed `.env` value (e.g. a rotated `JWT_SECRET`) will **not**
+be picked up by just re-running `vault_init` anymore.
+
+The correct way to update a secret now, without a full volume wipe, is to
+generate a fresh root token using the unseal key shares (still valid —
+revoking the root token does not invalidate the unseal keys), then use it
+directly:
+
+```bash
+docker compose exec vault vault operator generate-root -init
+# follow the prompts, supplying 3 of the 5 unseal key shares from init.json,
+# to obtain a new, valid root token
+docker compose exec vault sh -c 'VAULT_TOKEN=<new_root_token> vault kv put secret/jwt secret="<new_value>"'
+```
+
+A full `make re` (which wipes `vault-data`/`vault-keys`/`vault-approle`
+entirely and re-initializes from scratch) remains the simpler option when a
+clean slate is acceptable — see `DISASTER_RECOVERY.md` §4 for that scenario.
+This section exists so the *other* option (updating one secret without
+wiping everything) isn't a dead end now that the root token is gone by
+default.
+
 ## Operational Note: Vault Restarts
 
-The `vault_init` service only runs once per container lifecycle — it performs the unseal when *it* starts, not automatically every time the `vault` container itself restarts independently. In this setup, recovering from a manual `vault` container restart requires re-running `docker compose up -d vault_init`. This is expected behavior for a script-based unseal mechanism without a cloud KMS or HSM auto-unseal.
+The `vault_init` service only runs once per container lifecycle — it
+performs the unseal when *it* starts, not automatically every time the
+`vault` container itself restarts independently. In this setup, recovering
+from a manual `vault` container restart requires re-running
+`docker compose up -d vault_init`. This is expected behavior for a
+script-based unseal mechanism without a cloud KMS or HSM auto-unseal.
+
+As of the root-token-revocation change above, re-running `vault_init` after
+a `vault` restart now does exactly two things if bootstrap already
+completed: unseal Vault, and exit — it does **not** re-provision secrets,
+the policy, or the AppRole, since steps 4–9 are skipped. This is intentional
+(nothing needs re-provisioning on a simple restart, since none of that data
+was lost — only the in-memory seal state was), but worth knowing so the
+early exit isn't mistaken for a failure when checking `docker compose logs
+vault_init`.
 
 ## Issues found and fixed while testing
 
@@ -169,14 +267,16 @@ surfaced several real bugs:
 
 ## How to test
 
-1. `docker compose down && docker compose up -d` (a clean start exercises
-   the full init/unseal path, not just a restart).
+1. `docker compose down -v && docker compose up -d` (a clean start exercises
+   the full init/unseal/bootstrap/revoke path, not just a restart — note the
+   `-v` is now relevant: a stale root token from a previous bootstrap would
+   otherwise make step 3 below misleading).
 2. `docker compose exec vault vault status` — expect `Initialized: true`,
    `Sealed: false`, `Storage Type: raft`.
 3. `docker compose logs vault_init` — expect to see secrets written, the
-   policy loaded, AppRole enabled, and a RoleID/SecretID pair generated,
-   with no errors. Additionally, confirm the credentials were actually
-   persisted (not just logged):
+   policy loaded, AppRole enabled, a RoleID/SecretID pair generated, and
+   finally the root token revoked, with no errors. Additionally, confirm
+   the credentials were actually persisted (not just logged):
    `docker compose exec backend sh -c 'cat /vault/approle/role_id'`
    should return a value, not an empty string or a "no such file" error.
 4. `docker compose exec backend wget -qO- http://localhost:8000/health` —
@@ -185,3 +285,9 @@ surfaced several real bugs:
 6. Restart resilience: `docker compose restart vault`, then
    `docker compose up -d vault_init` — confirm it detects the sealed state
    and unseals automatically without re-running `vault operator init`.
+7. **New: idempotent skip behavior.** Run `docker compose up -d vault_init`
+   a second time (without restarting `vault` itself, root token already
+   revoked from step 1–3) — expect the log to show only the "bootstrap
+   already complete" message and an immediate exit, with no secrets
+   rewritten, no policy reloaded, and no new AppRole credentials generated
+   (`role_id`/`secret_id` file contents unchanged from before this run).

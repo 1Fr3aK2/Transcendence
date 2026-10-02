@@ -209,11 +209,22 @@ Since there is no after-the-fact recovery, the mitigation is preventive:
 - **Changing `.env` after Vault has already been initialized does not
   propagate on its own** (observed directly during this project's work: a
   `restart` does not re-read `.env` into a running container, and `vault_init`
-  does not re-run against an already-initialized Vault). If a secret value
-  needs to change without a full `make re`, it has to be written into Vault
-  directly with `vault kv put`, using the root token from
-  `/vault/keys/init.json`, in addition to updating `.env` so future
-  reinitializations stay consistent.
+  does not re-run its provisioning steps against an already-bootstrapped
+  Vault — see `VAULT_PRODUCTION.md`, "Idempotent bootstrap and root token
+  revocation"). If a secret value needs to change without a full `make re`,
+  it has to be written into Vault directly with `vault kv put`.
+  **The root token saved in `/vault/keys/init.json` is no longer usable for
+  this by default** — `vault_init.sh` now revokes it automatically once
+  bootstrap completes, as a security hardening measure. A fresh root token
+  has to be generated first, using the unseal key shares (still valid; only
+  the root token itself was revoked):
+  ```bash
+  docker compose exec vault vault operator generate-root -init
+  # supply 3 of the 5 unseal key shares from init.json when prompted
+  docker compose exec vault sh -c 'VAULT_TOKEN=<new_root_token> vault kv put secret/jwt secret="<new_value>"'
+  ```
+  Update `.env` as well, so a future full reinitialization stays consistent
+  with whatever was changed manually.
 - **If unsealing an existing Vault after a partial restart is ever needed**
   (Vault seals itself on every restart of the `vault` container, unlike a full
   `make re` which wipes it), the key shares from `/vault/keys/init.json` are
