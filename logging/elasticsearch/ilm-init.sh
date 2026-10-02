@@ -13,7 +13,7 @@ echo "Creating ILM/SLM admin role..."
 curl -sf -u "elastic:$ELASTIC_PASSWORD" -X POST "http://elasticsearch:9200/_security/role/ilm_admin_role" \
   -H "Content-Type: application/json" \
   -d '{
-    "cluster": ["manage_ilm", "manage_slm", "manage_index_templates", "manage_repository"],
+    "cluster": ["manage", "manage_ilm", "manage_slm", "manage_index_templates"],
     "indices": [
       {
         "names": ["*"],

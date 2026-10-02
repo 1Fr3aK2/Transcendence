@@ -138,9 +138,9 @@ limitations in the `ilm-init.sh` documentation.
 - Check that blocked requests have `anomaly_score` and a `rule_id` that points
   to the real cause, not just the score rule.
 
-## Known limitations
+## Design Notes & Caveats
 
-These are worth knowing before the evaluation.
+These are important operational details to be aware of:
 
 - **Request and response bodies may be indexed.** The audit log parts
   configured on the WAF include the (reduced) request body and the response

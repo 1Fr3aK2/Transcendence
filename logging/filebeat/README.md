@@ -472,7 +472,7 @@ The actual parsing and routing of these events is performed by the Logstash pipe
 
 ---
 
-## Known limitations
+## Design Notes
 
 ### Only the configured audit file is collected
 

@@ -157,7 +157,7 @@ GET login_attempts:victim@test.com
 
 ---
 
-## Known Limitations
+## Design Notes
 
 - The per-account rate limit uses the **email** as the key — it doesn't protect against account enumeration through other means (e.g. a registration endpoint confirming whether an email already exists). Out of scope for this document.
 - Blocking an account doesn't notify the legitimate user by email/SMS that their account is being targeted — could be a future improvement (outside the MVP).

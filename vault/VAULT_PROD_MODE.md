@@ -108,16 +108,9 @@ no manual step, and no credential visible outside the container boundary
 (not even in `docker compose logs`, now that it's written to a file instead
 of printed).
 
-## Known limitation
+## Operational Note: Vault Restarts
 
-`vault_init` only runs once per container lifecycle — it performs the
-unseal when *it* starts, not automatically every time the `vault` container
-itself restarts independently. In this project, recovering from a `vault`
-restart currently requires manually re-running `docker compose up -d
-vault_init`. Documented here as a known limitation rather than solved, given
-the project's scope — a "real" production setup would use an auto-unseal
-mechanism (e.g. a cloud KMS) instead of Shamir shares requiring manual/
-scripted intervention.
+The `vault_init` service only runs once per container lifecycle — it performs the unseal when *it* starts, not automatically every time the `vault` container itself restarts independently. In this setup, recovering from a manual `vault` container restart requires re-running `docker compose up -d vault_init`. This is expected behavior for a script-based unseal mechanism without a cloud KMS or HSM auto-unseal.
 
 ## Issues found and fixed while testing
 

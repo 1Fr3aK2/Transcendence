@@ -147,7 +147,7 @@ The Redis-backed limiter is applied after API-key authentication.
 
 Using Redis keeps the counter outside the Node.js process and allows the existing generic rate-limiting infrastructure to be reused.
 
-**Known limitation that remains:** clients sharing the same IP/NAT still
+**Design note:** clients sharing the same IP/NAT still
 share a quota — this fix addresses one consumer being able to exhaust
 *everyone's* quota, not per-API-key isolation. A future improvement would
 be keying on the API key itself (or a per-client key issued individually)

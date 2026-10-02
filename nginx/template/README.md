@@ -198,9 +198,9 @@ No dedicated rate limit — these aren't endpoints exposed to end users of the a
 - **`932236`** ("Remote Command Execution: Unix Command Injection (command without evasion)", PL2) — a CRS rule with well-documented false positives against ordinary text containing short command-like substrings (e.g. "set" inside "settings") and against UUID/hash-like tokens containing sequences such as "df"/"fd". Kibana's session cookies and saved-object IDs are exactly this kind of token, generated on every login and search; the most likely trigger is the Kibana login/session flow itself rather than any specific admin action.
 - **`932240`** ("Remote Command Execution: Unix Command Injection evasion attempt detected", PL2) — same rule family as above; documented false positives against free text containing apostrophes and against cookie values using `$`-separated formats (the kind of format session/analytics cookies commonly use), again consistent with Kibana's own session handling rather than a specific attack pattern.
 - **`942220`** ("Looking for integer overflow attacks", critical severity) — flags very large integers or a specific "magic number" float value in request data. Kibana's internal APIs routinely pass large epoch-millisecond timestamps and offsets in JSON request bodies, which plausibly trips this rule on ordinary use.
-- **`934190`** (Node.js/RCE-detection family, CRS 934xxx) — *rationale not yet confirmed.* Unlike the three above, the exact trigger condition for this specific rule ID was not identified with confidence, and is not documented here to avoid stating a security rationale that hasn't actually been verified against real traffic. **Recommended next step:** reproduce the false positive against `/kibana/` with this rule re-enabled (temporarily, in isolation) and confirm what request data it matches against, then update this entry with the confirmed cause — the other three exclusions above follow this same standard and this one should too before the module is considered fully documented.
+- **`934190`** ("Possible Server Side Request Forgery (SSRF) Attack: Scheme-less localhost or internal hostname detected") — confirmed: during login, Kibana's `/kibana/internal/security/login` endpoint sends a JSON payload containing `currentURL: https://localhost/kibana/login...`. This rule flags the string `localhost/` inside request arguments as a potential SSRF attempt, causing legitimate logins to be blocked with `403`.
 
-All four exclusions follow the same pattern used for the confirmed `942340` and the `/socket.io/` exclusion above: the rule is removed only inside this one `location` block (`modsecurity on;` stays active), not disabled globally — the rest of the WAF's protection, including the rest of the RCE and SQLi rule families, remains in effect for every other route.
+All five exclusions follow the same pattern used for the confirmed `942340` and the `/socket.io/` exclusion above: the rule is removed only inside this one `location` block (`modsecurity on;` stays active), not disabled globally — the rest of the WAF's protection, including the rest of the RCE and SQLi rule families, remains in effect for every other route.
 
 ## Static status page
 
@@ -228,37 +228,17 @@ location /health {
 
 Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above. Uses a `rewrite` rule to map the request URI to `/health/status` because variable-based `proxy_pass` cannot perform URI replacement directly in the directive (see "DNS resolution" above).
 
-## Per-user rate limiting (forum, previously a known limitation — now resolved)
+## Per-user rate limiting (forum)
 
-Earlier revisions of this document noted that the forum's rate limit was
-IP-only, because `createPost`/`createComment`/`createReport` had no
-authentication guard and therefore no reliable `userId` to key a per-user
-limit on. This has since been fixed in the backend: all forum endpoints now
-use `@UseGuards(JwtAuthGuard)`, and per-user limits are enforced in the
-backend itself via the existing `RateLimiterService` (not in nginx, which
-can't cleanly distinguish users or HTTP methods within the same path):
+The forum's rate limiting uses a two-tier approach. At the nginx layer, the `forum` zone (defined above) acts as a coarse, IP-level first line of defense. Finer-grained, per-user limits are enforced by the backend itself via the `RateLimiterService` (because nginx cannot cleanly distinguish authenticated users or HTTP methods within the same path). 
 
+The backend-enforced limits for forum endpoints are:
 - `createPost`: 5 / 10 minutes
 - `createComment`: 20 / 10 minutes
 - `createReport`: 10 / hour
 
-nginx's `forum` zone above remains as the coarser, IP-level first line of
-defense; the backend enforces the finer-grained, identity-aware limits.
+## Design notes / future work
 
-## Stale DNS caching (previously a known limitation — now resolved)
-
-Earlier revisions of this document noted that nginx could serve `502`s
-(surfaced by ModSecurity as `403`s) against a recreated backend container if
-nginx itself wasn't restarted at the same time, due to stale DNS caching. This
-has been fixed structurally by adding `resolver 127.0.0.11 valid=10s;` and
-switching all `proxy_pass` directives to use nginx variables — see "DNS
-resolution" above for the full explanation.
-
-## Known limitations / future work
-
-- **`/kibana/` ModSecurity exclusion `934190`** — the only one of the five
-  rule removals without a confirmed rationale; see the note under
-  "Infrastructure UIs" above.
 - **`X-Frame-Options: DENY`** was chosen as the more restrictive option due to
   lack of concrete confirmation about iframe usage in the frontend;
   reconsider `SAMEORIGIN` if a real need arises.

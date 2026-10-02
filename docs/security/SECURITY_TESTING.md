@@ -40,7 +40,7 @@ echo "PING" | nc localhost 6379
 
 **Conclusion**: Redis rejects any command without prior authentication. The `--requirepass` flag is correctly configured.
 
-**Note**: Port `6379` is exposed on the host to make local development easier. In production, the `ports` section for Redis should be removed from the compose file — the service should only be accessible within the internal Docker network (`transcendence`).
+**Note**: Port `6379` is intentionally not exposed to the host in `docker-compose.yml`. The service is only accessible within the internal Docker network (`transcendence`), preventing external network attacks.
 
 ---
 
@@ -232,12 +232,12 @@ curl http://localhost:8200/v1/secret/data/postgres
 
 ---
 
-## Known Limitations and Production Recommendations
+## Design Notes and Production Recommendations
 
 | Item | Current State | Production Recommendation |
 |---|---|---|
-| Redis port exposed (`6379`) | Exposed on host | Remove `ports` from compose — accessible only on the Docker network |
-| Postgres port exposed (`5432`) | Exposed on host | Remove `ports` from compose |
+| Redis port exposed (`6379`) | **Resolved** — Not exposed on host | Already properly secured (accessible only on the internal Docker network) |
+| Postgres port exposed (`5432`) | **Resolved** — Not exposed on host | Already properly secured (accessible only on the internal Docker network) |
 | ~~Vault in dev mode~~ | **Resolved** — Vault now runs with a real `operator init -key-shares=5 -key-threshold=3`, persistent storage, and TLS; see `SECURITY_REPORT.md` §3 | — |
 | SSL certificates | `mkcert` (self-signed, local) | Use Let's Encrypt or a real certificate |
 | Vault root token | Used directly for initial bootstrap | Create tokens with limited, per-service permissions beyond initial setup |

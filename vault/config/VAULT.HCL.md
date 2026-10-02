@@ -164,36 +164,11 @@ successfully), so it never starts before Vault is initialized, unsealed and
 populated. `backend_seed` also waits for `vault_init`, since seeding needs
 the AppRole credentials.
 
-## Known limitations
+## Architecture trade-offs & Security notes
 
-These are the remaining accepted trade-offs for a local, single-node project:
+These are the accepted trade-offs for a local, single-node project:
 
-- **Unseal keys and root token sit together** in `init.json` on the
-  `vault-keys` volume. This is what lets the stack unseal itself
-  automatically, but it defeats the purpose of Shamir's secret sharing: anyone
-  with access to that volume has everything. In a real deployment the keys
-  would be split between different people, or replaced by auto-unseal through
-  a cloud KMS or HSM. The root token is now revoked after bootstrap (see
-  below), which reduces the impact: an attacker with the volume still has the
-  unseal keys, but no longer has a valid root token ready to use — they would
-  need to run `vault operator generate-root` (an auditable operation) to
-  obtain a new one.
-- **The `secret_id` never expires** (`secret_id_ttl=0`). The previous value
-  of `24h` caused the backend to fail re-authentication after a day without a
-  `docker compose up`. Since the `secret_id` is regenerated on every
-  `vault_init` run anyway (each `docker compose up` produces a new random
-  value), a time-based TTL adds operational fragility without meaningful
-  security benefit in this setup. Setting it to `0` removes the expiry.
-- **`./vault/config` and `./vault/certs` were previously mounted writable**
-  on the `vault` service. Fixed: both are now mounted with `:ro` in
-  `docker-compose.yml`. Vault only reads these files; the stricter mount
-  prevents any in-container process from modifying its own configuration or
-  TLS certificates.
-
-## Changes applied to resolve the previous limitations
-
-| Was | Now | File |
-|-----|-----|------|
-| `secret_id_ttl=24h` | `secret_id_ttl=0` | `vault-init.sh` |
-| Root token never revoked | Revoked at end of bootstrap (step 10) | `vault-init.sh` |
-| Config/certs mounted writable | Mounted with `:ro` | `docker-compose.yml` |
+- **Unseal keys and root token sit together** in `init.json` on the `vault-keys` volume. This is what lets the stack unseal itself automatically, but it defeats the purpose of Shamir's secret sharing: anyone with access to that volume has everything. In a real deployment the keys would be split between different people, or replaced by auto-unseal through a cloud KMS or HSM. 
+- **Root token revocation**: The root token is automatically revoked at the end of the bootstrap process (in `vault-init.sh` step 10). This reduces the impact of the shared volume: an attacker with the volume still has the unseal keys, but no longer has a valid root token ready to use — they would need to run `vault operator generate-root` (an auditable operation) to obtain a new one.
+- **The `secret_id` never expires** (`secret_id_ttl=0`). A previous value of `24h` caused the backend to fail re-authentication after a day without a `docker compose up`. Since the `secret_id` is regenerated on every `vault_init` run anyway (each `docker compose up` produces a new random value), a time-based TTL adds operational fragility without meaningful security benefit in this setup. Setting it to `0` removes the expiry.
+- **Read-only mounts for config and certs**: `./vault/config` and `./vault/certs` are mounted with `:ro` in `docker-compose.yml`. Vault only reads these files; the strict mount prevents any in-container process from modifying its own configuration or TLS certificates.

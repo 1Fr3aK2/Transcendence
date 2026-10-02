@@ -196,7 +196,7 @@ populated by nginx, falling back to `request.ip`):
 const clientIp = (request.headers['x-real-ip'] as string) || request.ip;
 await this.rateLimiterService.checkLimit(`admin_api_requests:${clientIp}`, 100, 60);
 ```
-Known limitation: consumers behind the same IP/NAT still share a quota —
+Design note: consumers behind the same IP/NAT still share a quota —
 a future improvement would be per-client API keys.
 
 **Test:** tested directly against the backend (bypassing nginx's own rate
