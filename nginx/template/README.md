@@ -17,7 +17,7 @@ The file defines two `server{}` blocks:
 - **Port `${PORT}` (80)** — only exists to redirect all HTTP traffic to HTTPS (`301`), and to expose `/stub_status` (used by the container's healthcheck and by Prometheus's `nginx_exporter`).
 - **Port `${SSL_PORT}` (443)** — where all the real logic lives: TLS, WAF (ModSecurity), security headers, rate limiting, and the proxy to the various internal services (frontend, backend, Grafana, Prometheus, Kibana, and the static status page).
 
-Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, `${BACKEND}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
+Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
 
 ## Rate limiting
 
@@ -62,13 +62,33 @@ curl -k -I https://localhost/
 ```
 Confirmed: all 4 headers present in the response with the expected values.
 
+## DNS resolution
+
+```nginx
+resolver 127.0.0.11 valid=10s;
+set $upstream_frontend http://frontend:5173;
+set $upstream_backend http://backend:8000;
+set $upstream_grafana http://grafana:3000;
+set $upstream_prometheus http://prometheus:9090;
+set $upstream_kibana http://kibana:5601;
+```
+
+By default, nginx resolves upstream hostnames (e.g. `backend`, `grafana`) to IP addresses **once at startup** and caches the result indefinitely. In a Docker environment, container IPs can change whenever a container is recreated (e.g. after `docker compose stop backend && docker compose up -d backend`). When this happens, nginx continues sending traffic to the old IP — which now belongs to a different container or to nothing — producing `502 Bad Gateway` errors (surfaced by ModSecurity as `403 Forbidden`).
+
+The fix has two parts:
+
+1. **`resolver 127.0.0.11 valid=10s;`** — tells nginx to use Docker's embedded DNS server (`127.0.0.11`) and to re-query it every 10 seconds, instead of caching the result forever.
+2. **Variable-based `proxy_pass`** — when `proxy_pass` uses a literal hostname (e.g. `proxy_pass http://backend:8000;`), nginx resolves it at config-load time and ignores the `resolver` directive. Using an nginx variable (`proxy_pass $upstream_backend;`) forces nginx to resolve the hostname at **request time** through the configured resolver.
+
+This makes the infrastructure resilient to container restarts: the backend (or any other service) can be recreated without needing to also restart nginx.
+
 ## Locations per backend module
 
 Each backend module has its own `location`, matching the real route prefix in NestJS (nginx has no way to know this on its own — it has to be maintained manually every time a new module is added):
 
 ```nginx
 location /auth/ {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -77,14 +97,14 @@ location /auth/ {
 }
 
 location /forum {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     limit_req zone=forum burst=5 nodelay;
 }
 
 location /api/admin {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -94,7 +114,7 @@ location /api/admin {
 }
 
 location /users {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -102,7 +122,7 @@ location /users {
 }
 
 location /crypto {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -116,7 +136,7 @@ location /crypto {
 
 ```nginx
 location /ws {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
@@ -128,7 +148,7 @@ location /socket.io/ {
     modsecurity_rules '
         SecRuleRemoveById 920420
     ';
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
@@ -144,13 +164,13 @@ No dedicated rate limit on either — these are persistent connections (live BTC
 
 ```nginx
 location /grafana/ {
-    proxy_pass http://grafana:3000;
+    proxy_pass $upstream_grafana;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
 
 location /prometheus/ {
-    proxy_pass http://prometheus:9090;
+    proxy_pass $upstream_prometheus;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
@@ -164,7 +184,7 @@ location /kibana/ {
         SecRuleRemoveById 942340
         SecRuleRemoveById 934190
     ';
-    proxy_pass http://kibana:5601;
+    proxy_pass $upstream_kibana;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
@@ -199,13 +219,14 @@ Served directly by nginx as a static file, not proxied to the backend or bundled
 ```nginx
 location /health {
     limit_req zone=health burst=20 nodelay;
-    proxy_pass ${BACKEND}/health/status;
+    rewrite ^ /health/status break;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
 ```
 
-Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above.
+Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above. Uses a `rewrite` rule to map the request URI to `/health/status` because variable-based `proxy_pass` cannot perform URI replacement directly in the directive (see "DNS resolution" above).
 
 ## Per-user rate limiting (forum, previously a known limitation — now resolved)
 
@@ -224,6 +245,15 @@ can't cleanly distinguish users or HTTP methods within the same path):
 nginx's `forum` zone above remains as the coarser, IP-level first line of
 defense; the backend enforces the finer-grained, identity-aware limits.
 
+## Stale DNS caching (previously a known limitation — now resolved)
+
+Earlier revisions of this document noted that nginx could serve `502`s
+(surfaced by ModSecurity as `403`s) against a recreated backend container if
+nginx itself wasn't restarted at the same time, due to stale DNS caching. This
+has been fixed structurally by adding `resolver 127.0.0.11 valid=10s;` and
+switching all `proxy_pass` directives to use nginx variables — see "DNS
+resolution" above for the full explanation.
+
 ## Known limitations / future work
 
 - **`/kibana/` ModSecurity exclusion `934190`** — the only one of the five
@@ -237,8 +267,3 @@ defense; the backend enforces the finer-grained, identity-aware limits.
   this config — documented in `SECURITY_REPORT.md` §8. A second one-shot
   service, `backend_seed`, follows the same pattern and must also complete
   successfully before the backend is expected to behave correctly.
-- **Stale DNS caching** — nginx can serve `502`s (surfaced by ModSecurity as
-  `403`s) against a recreated backend container if nginx itself wasn't
-  restarted at the same time; see `SECURITY_REPORT.md` §9. Not fixed
-  structurally (would require `resolver 127.0.0.11` + a variable-based
-  `proxy_pass`); logged as an accepted trade-off.
