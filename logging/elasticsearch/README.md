@@ -82,17 +82,3 @@ A detail worth knowing:
 - In **Index Management**, open a log index and check its lifecycle tab.
 - In Kibana's Dev Tools, the `_ilm/explain` API on an index shows its current
   phase and, importantly, whether the policy is in an error step.
-
-## Known limitations
-
-These are worth knowing before the evaluation.
-
-- **Retention, not archiving.** The policy deletes after 14 days; it does not
-  keep a copy anywhere. The subject mentions "retention and archiving
-  policies", so be ready to explain what "archiving" means in this setup, or
-  extend it (for example with snapshots to a repository, or a warm/cold phase
-  before deletion).
-- **Superuser credentials.** The script authenticates as the `elastic`
-  superuser. That is acceptable for a bootstrap job, but a dedicated role with
-  only the ILM and template privileges would follow least privilege more
-  closely.
