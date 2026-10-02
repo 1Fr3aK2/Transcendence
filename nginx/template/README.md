@@ -17,7 +17,7 @@ The file defines two `server{}` blocks:
 - **Port `${PORT}` (80)** — only exists to redirect all HTTP traffic to HTTPS (`301`), and to expose `/stub_status` (used by the container's healthcheck and by Prometheus's `nginx_exporter`).
 - **Port `${SSL_PORT}` (443)** — where all the real logic lives: TLS, WAF (ModSecurity), security headers, rate limiting, and the proxy to the various internal services (frontend, backend, Grafana, Prometheus, Kibana, and the static status page).
 
-Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, `${BACKEND}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
+Variables (`${PORT}`, `${SERVER_NAME}`, `${SSL_CERT_FILE}`, etc.) are substituted at startup by the `envsubst` mechanism in the `owasp/modsecurity-crs` image, from the values defined under `environment:` in `docker-compose.yml`. **The filename must end in `.template`** — that suffix is what the image's startup script uses to know which files to process.
 
 ## Rate limiting
 
@@ -62,13 +62,33 @@ curl -k -I https://localhost/
 ```
 Confirmed: all 4 headers present in the response with the expected values.
 
+## DNS resolution
+
+```nginx
+resolver 127.0.0.11 valid=10s;
+set $upstream_frontend http://frontend:5173;
+set $upstream_backend http://backend:8000;
+set $upstream_grafana http://grafana:3000;
+set $upstream_prometheus http://prometheus:9090;
+set $upstream_kibana http://kibana:5601;
+```
+
+By default, nginx resolves upstream hostnames (e.g. `backend`, `grafana`) to IP addresses **once at startup** and caches the result indefinitely. In a Docker environment, container IPs can change whenever a container is recreated (e.g. after `docker compose stop backend && docker compose up -d backend`). When this happens, nginx continues sending traffic to the old IP — which now belongs to a different container or to nothing — producing `502 Bad Gateway` errors (surfaced by ModSecurity as `403 Forbidden`).
+
+The fix has two parts:
+
+1. **`resolver 127.0.0.11 valid=10s;`** — tells nginx to use Docker's embedded DNS server (`127.0.0.11`) and to re-query it every 10 seconds, instead of caching the result forever.
+2. **Variable-based `proxy_pass`** — when `proxy_pass` uses a literal hostname (e.g. `proxy_pass http://backend:8000;`), nginx resolves it at config-load time and ignores the `resolver` directive. Using an nginx variable (`proxy_pass $upstream_backend;`) forces nginx to resolve the hostname at **request time** through the configured resolver.
+
+This makes the infrastructure resilient to container restarts: the backend (or any other service) can be recreated without needing to also restart nginx.
+
 ## Locations per backend module
 
 Each backend module has its own `location`, matching the real route prefix in NestJS (nginx has no way to know this on its own — it has to be maintained manually every time a new module is added):
 
 ```nginx
 location /auth/ {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -77,14 +97,14 @@ location /auth/ {
 }
 
 location /forum {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     limit_req zone=forum burst=5 nodelay;
 }
 
 location /api/admin {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -94,7 +114,7 @@ location /api/admin {
 }
 
 location /users {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -102,7 +122,7 @@ location /users {
 }
 
 location /crypto {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -116,7 +136,7 @@ location /crypto {
 
 ```nginx
 location /ws {
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
@@ -128,7 +148,7 @@ location /socket.io/ {
     modsecurity_rules '
         SecRuleRemoveById 920420
     ';
-    proxy_pass http://backend:8000;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
@@ -144,13 +164,13 @@ No dedicated rate limit on either — these are persistent connections (live BTC
 
 ```nginx
 location /grafana/ {
-    proxy_pass http://grafana:3000;
+    proxy_pass $upstream_grafana;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
 
 location /prometheus/ {
-    proxy_pass http://prometheus:9090;
+    proxy_pass $upstream_prometheus;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
@@ -164,7 +184,7 @@ location /kibana/ {
         SecRuleRemoveById 942340
         SecRuleRemoveById 934190
     ';
-    proxy_pass http://kibana:5601;
+    proxy_pass $upstream_kibana;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
@@ -178,9 +198,9 @@ No dedicated rate limit — these aren't endpoints exposed to end users of the a
 - **`932236`** ("Remote Command Execution: Unix Command Injection (command without evasion)", PL2) — a CRS rule with well-documented false positives against ordinary text containing short command-like substrings (e.g. "set" inside "settings") and against UUID/hash-like tokens containing sequences such as "df"/"fd". Kibana's session cookies and saved-object IDs are exactly this kind of token, generated on every login and search; the most likely trigger is the Kibana login/session flow itself rather than any specific admin action.
 - **`932240`** ("Remote Command Execution: Unix Command Injection evasion attempt detected", PL2) — same rule family as above; documented false positives against free text containing apostrophes and against cookie values using `$`-separated formats (the kind of format session/analytics cookies commonly use), again consistent with Kibana's own session handling rather than a specific attack pattern.
 - **`942220`** ("Looking for integer overflow attacks", critical severity) — flags very large integers or a specific "magic number" float value in request data. Kibana's internal APIs routinely pass large epoch-millisecond timestamps and offsets in JSON request bodies, which plausibly trips this rule on ordinary use.
-- **`934190`** (Node.js/RCE-detection family, CRS 934xxx) — *rationale not yet confirmed.* Unlike the three above, the exact trigger condition for this specific rule ID was not identified with confidence, and is not documented here to avoid stating a security rationale that hasn't actually been verified against real traffic. **Recommended next step:** reproduce the false positive against `/kibana/` with this rule re-enabled (temporarily, in isolation) and confirm what request data it matches against, then update this entry with the confirmed cause — the other three exclusions above follow this same standard and this one should too before the module is considered fully documented.
+- **`934190`** ("Possible Server Side Request Forgery (SSRF) Attack: Scheme-less localhost or internal hostname detected") — confirmed: during login, Kibana's `/kibana/internal/security/login` endpoint sends a JSON payload containing `currentURL: https://localhost/kibana/login...`. This rule flags the string `localhost/` inside request arguments as a potential SSRF attempt, causing legitimate logins to be blocked with `403`.
 
-All four exclusions follow the same pattern used for the confirmed `942340` and the `/socket.io/` exclusion above: the rule is removed only inside this one `location` block (`modsecurity on;` stays active), not disabled globally — the rest of the WAF's protection, including the rest of the RCE and SQLi rule families, remains in effect for every other route.
+All five exclusions follow the same pattern used for the confirmed `942340` and the `/socket.io/` exclusion above: the rule is removed only inside this one `location` block (`modsecurity on;` stays active), not disabled globally — the rest of the WAF's protection, including the rest of the RCE and SQLi rule families, remains in effect for every other route.
 
 ## Static status page
 
@@ -199,36 +219,26 @@ Served directly by nginx as a static file, not proxied to the backend or bundled
 ```nginx
 location /health {
     limit_req zone=health burst=20 nodelay;
-    proxy_pass ${BACKEND}/health/status;
+    rewrite ^ /health/status break;
+    proxy_pass $upstream_backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }
 ```
 
-Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above.
+Proxies to the backend's `/health/status` endpoint (not the plainer `/health` used internally by Docker's own healthcheck) — the richer, always-`200` endpoint intended for external consumption. Consumed by the status page at `/status` above. Uses a `rewrite` rule to map the request URI to `/health/status` because variable-based `proxy_pass` cannot perform URI replacement directly in the directive (see "DNS resolution" above).
 
-## Per-user rate limiting (forum, previously a known limitation — now resolved)
+## Per-user rate limiting (forum)
 
-Earlier revisions of this document noted that the forum's rate limit was
-IP-only, because `createPost`/`createComment`/`createReport` had no
-authentication guard and therefore no reliable `userId` to key a per-user
-limit on. This has since been fixed in the backend: all forum endpoints now
-use `@UseGuards(JwtAuthGuard)`, and per-user limits are enforced in the
-backend itself via the existing `RateLimiterService` (not in nginx, which
-can't cleanly distinguish users or HTTP methods within the same path):
+The forum's rate limiting uses a two-tier approach. At the nginx layer, the `forum` zone (defined above) acts as a coarse, IP-level first line of defense. Finer-grained, per-user limits are enforced by the backend itself via the `RateLimiterService` (because nginx cannot cleanly distinguish authenticated users or HTTP methods within the same path). 
 
+The backend-enforced limits for forum endpoints are:
 - `createPost`: 5 / 10 minutes
 - `createComment`: 20 / 10 minutes
 - `createReport`: 10 / hour
 
-nginx's `forum` zone above remains as the coarser, IP-level first line of
-defense; the backend enforces the finer-grained, identity-aware limits.
+## Design notes / future work
 
-## Known limitations / future work
-
-- **`/kibana/` ModSecurity exclusion `934190`** — the only one of the five
-  rule removals without a confirmed rationale; see the note under
-  "Infrastructure UIs" above.
 - **`X-Frame-Options: DENY`** was chosen as the more restrictive option due to
   lack of concrete confirmation about iframe usage in the frontend;
   reconsider `SAMEORIGIN` if a real need arises.
@@ -237,8 +247,3 @@ defense; the backend enforces the finer-grained, identity-aware limits.
   this config — documented in `SECURITY_REPORT.md` §8. A second one-shot
   service, `backend_seed`, follows the same pattern and must also complete
   successfully before the backend is expected to behave correctly.
-- **Stale DNS caching** — nginx can serve `502`s (surfaced by ModSecurity as
-  `403`s) against a recreated backend container if nginx itself wasn't
-  restarted at the same time; see `SECURITY_REPORT.md` §9. Not fixed
-  structurally (would require `resolver 127.0.0.11` + a variable-based
-  `proxy_pass`); logged as an accepted trade-off.

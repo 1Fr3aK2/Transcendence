@@ -55,7 +55,7 @@ vault write auth/approle/role/backend-role \
   token_policies="backend-policy" \
   token_ttl=1h \
   token_max_ttl=4h \
-  secret_id_ttl=24h
+  secret_id_ttl=0
 
 # 8. Obter o RoleID (fixo) e disponibilizá-lo ao backend via volume partilhado
 mkdir -p "$APPROLE_DIR"
@@ -66,3 +66,11 @@ vault write -f -field=secret_id auth/approle/role/backend-role/secret-id > "$APP
 
 chmod 600 "$APPROLE_DIR/role_id" "$APPROLE_DIR/secret_id"
 echo "[*] role_id e secret_id gravados em $APPROLE_DIR"
+
+# 10. Revoke the root token — no longer needed after bootstrap.
+#     If revocation fails (e.g. re-execution where token is already revoked),
+#     the script does not fail — the || ensures continuity.
+echo "[*] Revoking the root token..."
+vault token revoke "$ROOT_TOKEN" \
+  && echo "[*] Root token successfully revoked" \
+  || echo "[!] Warning: root token was not revoked (might have already expired or been revoked)"

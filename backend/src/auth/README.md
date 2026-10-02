@@ -44,7 +44,7 @@ User fields:
   "createdAt": "2026-07-18T14:15:50.101Z",
   "updatedAt": "2026-07-18T14:15:50.101Z"
 }
-````
+```
 
 ---
 
@@ -188,6 +188,12 @@ Response:
 
 The token must be used to access protected routes.
 
+> **Confirms the field used by the per-account rate limiter**: the Redis
+> key built in `AuthService.login()` for brute-force protection is keyed on
+> this `email` field (`login_attempts:${dto.email}`) — see
+> `RATE_LIMITING.md` / `AUTH_HARDENING_REPORT.md` for the full rate limiting
+> design built on top of this endpoint.
+
 ---
 
 # Protected Routes
@@ -306,16 +312,23 @@ docker logs backend
 
 # Environment Variables
 
-Current authentication configuration:
-
 ```env
 DATABASE_URL=postgresql://user:pass@postgres:5432/appdb
-
-JWT_SECRET=secret123
-JWT_EXPIRES=1h
 ```
 
-> In production, JWT secrets should be stored in Vault instead of `.env`.
+**`JWT_SECRET` is no longer stored in `.env` or passed as an environment
+variable to the `backend` container.** It was migrated to HashiCorp Vault
+(secret `secret/jwt`), fetched over an AppRole login during the backend's
+bootstrap phase (`main.ts`, before `NestFactory.create()` runs), and kept
+only in the running Node process's memory —
+`docker compose exec backend env | grep JWT_SECRET` returns nothing by
+design. See `AUTH_HARDENING_REPORT.md` §3 and `SECURITY_REPORT.md` §3 for
+the full migration, including a real ordering bug found and fixed along the
+way (the module that used the secret was being evaluated before Vault had
+responded).
+
+`JWT_EXPIRES` (token lifetime) is unaffected by this and, if still used,
+remains a plain environment variable — it isn't a secret.
 
 ---
 
@@ -352,12 +365,14 @@ Authorization: Bearer TOKEN
 
 Planned:
 
-* Move JWT secret to Hashicorp Vault
+* ~~Move JWT secret to Hashicorp Vault~~ — **done**, see "Environment
+  Variables" above.
 * Refresh tokens
 * Logout / token invalidation
-* Role based authorization
+* Role based authorization — **partially implemented**: the forum's
+  moderation endpoints already use `RolesGuard`/`@Roles` to restrict
+  access (e.g. resolving reports, viewing moderation logs). Not yet a
+  general-purpose role system applied across every module.
 * Two-factor authentication
 * Hide password field from API responses
 * Add email verification
-
-```

@@ -11,7 +11,7 @@ export async function loadSecretsFromVault(): Promise<void> {
   const vaultAddr = process.env.VAULT_ADDR; // ex: https://vault:8200
 
   if (!vaultAddr) {
-    throw new Error('VAULT_ADDR não está definido');
+    throw new Error('VAULT_ADDR not defined');
   }
 
   const roleId = readFileSync(`${APPROLE_DIR}/role_id`, 'utf-8').trim();
@@ -24,7 +24,7 @@ export async function loadSecretsFromVault(): Promise<void> {
 
   if (!loginRes.ok) {
     throw new Error(
-      `Falha no login AppRole ao Vault: ${loginRes.status} ${await loginRes.text()}`,
+      `Error logging AppRole to Vault: ${loginRes.status} ${await loginRes.text()}`,
     );
   }
 
@@ -34,7 +34,7 @@ export async function loadSecretsFromVault(): Promise<void> {
   const adminApiData = await readVaultSecret(vaultAddr, clientToken, 'admin-api');
   const adminApiKey = adminApiData.key;
   if (!adminApiKey) {
-    throw new Error('secret/admin-api não tem o campo "key" definido');
+    throw new Error('secret/admin-api does not have "key" defined');
   }
   process.env.ADMIN_API_KEY = adminApiKey;
 
@@ -42,7 +42,7 @@ export async function loadSecretsFromVault(): Promise<void> {
   const { username, email, password } = adminAccountData;
   if (!username || !email || !password) {
     throw new Error(
-      'secret/admin-account tem de ter os campos "username", "email" e "password" definidos',
+      'secret/admin-account needs the fields "username", "email" and "password" defined',
     );
   }
   process.env.ADMIN_USERNAME = username;
@@ -52,7 +52,7 @@ export async function loadSecretsFromVault(): Promise<void> {
   const jwtData = await readVaultSecret(vaultAddr, clientToken, 'jwt');
   const jwtSecret = jwtData.secret;
   if (!jwtSecret) {
-    throw new Error('secret/jwt não tem o campo "secret" definido');
+    throw new Error('secret/jwt does not have "secret" field defined');
   }
   process.env.JWT_SECRET = jwtSecret;
 }
@@ -68,7 +68,7 @@ async function readVaultSecret(
 
   if (!res.ok) {
     throw new Error(
-      `Falha ao ler secret/${path} do Vault: ${res.status} ${await res.text()}`,
+      `Error reading secret/${path} from Vault: ${res.status} ${await res.text()}`,
     );
   }
 
