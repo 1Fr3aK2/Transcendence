@@ -219,8 +219,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
     entrypoint: ["sh", "/etc/vault/config/vault-init.sh"]
     volumes:
-      - ./vault/config:/etc/vault/config
-      - ./vault/certs:/etc/vault/certs
+      - ./vault/config:/etc/vault/config:ro
+      - ./vault/certs:/etc/vault/certs:ro
       - vault-keys:/vault/keys
       - vault-approle:/vault/approle
     depends_on:
@@ -230,7 +230,7 @@ services:
         condition: service_completed_successfully
       vault-approle-init:
         condition: service_completed_successfully
-    restart: on-failure
+    restart: on-failure:3
 
   grafana:
     container_name: grafana
