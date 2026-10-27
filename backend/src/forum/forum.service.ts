@@ -27,30 +27,36 @@ export class ForumService {
   ) {}
 
   async findAllPosts(query: SearchPostsDto) {
+
+    // Validates that the start date is not later than the end date
     if (
-      query.dateFrom &&
-      query.dateTo &&
-      new Date(query.dateFrom) > new Date(query.dateTo)
+      query.dateFrom &&                                   // query.dateFrom is provided
+      query.dateTo &&                                     // query.dateTo is provided
+      new Date(query.dateFrom) > new Date(query.dateTo)   // The start date is later than the end date
     ) {
       throw new BadRequestException(
         'dateFrom must be earlier than or equal to dateTo',
       );
     }
+
+    // Sets default values when the corresponding query parameters are null or undefined (?? — Nullish Coalescing Operator)
     const sortBy = query.sortBy ?? 'createdAt';
     const order = query.order ?? 'desc';
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
-    const skip = (page - 1) * limit;
+    const skip = (page - 1) * limit;    // Calculates how many records to skip for pagination
 
-    const where: Prisma.PostWhereInput = {
+    // Builds the Prisma filter object dynamically, including only the provided filters
+    const where: Prisma.PostWhereInput = {    // Prisma-generated type defining allowed filters and operators for the Post model (TypeScript compile-time checking only); Ensures properties and operators are compatible with the Prisma model
       status: 'visible',
 
+      // Adds a search filter if query.search is provided
       ...(query.search && {
-        OR: [
+        OR: [   // Prisma logical operator: matches records if at least one condition is true (e.g., title or content contains the search term)
           {
             title: {
-              contains: query.search,
-              mode: 'insensitive',
+              contains: query.search,   // Prisma string filter operator: matches strings containing the specified value
+              mode: 'insensitive',      // Case-insensitive search
             },
           },
           {
@@ -62,44 +68,52 @@ export class ForumService {
         ],
       }),
 
-      ...(query.authorId && {
+      // Adds an author filter if query.authorId is provided
+      ...(query.authorId && {      // && returns the first operand if falsy; otherwise, it evaluates and returns the second
         authorId: query.authorId,
       }),
 
+      // Adds a date filter if at least one date is provided
       ...((query.dateFrom || query.dateTo) && {
         createdAt: {
           ...(query.dateFrom && {
-            gte: new Date(query.dateFrom),
+            gte: new Date(query.dateFrom),    // Greater than or equal to the start date (Prisma comparison operator)
           }),
           ...(query.dateTo && {
-            lte: new Date(query.dateTo),
+            // getTime() returns milliseconds since the Unix epoch;
+            // 86400000 ms = 24 hours, moving to the start of the next UTC day.
+            // lt excludes that instant, including the entire dateTo day.
+            lt: new Date(new Date(query.dateTo).getTime() + 86400000),
           }),
         },
       }),
     };
 
-    const [posts, total] = await Promise.all([
+    // Promise.all() runs both queries concurrently and waits for all Promises to resolve successfully
+    const [posts, total] = await Promise.all([  // Array destructuring: assigns each result to a separate variable
+
       this.prisma.post.findMany({
-        where,
+        where,                      // Applies the filters defined earlier
         orderBy: {
-          [sortBy]: order,
+          [sortBy]: order,          // Dynamic property name: sorts by the field in sortBy, using asc or desc ( [] - computed property name)
         },
-        skip,
-        take: limit,
+        skip,                       // Number of records to skip (pagination)
+        take: limit,                // Maximum number of records to retrieve
       }),
 
       this.prisma.post.count({
-        where,
+        where,                      // Counts all matching posts, ignoring pagination
       }),
     ]);
 
+    // Returns the posts and pagination metadata
     return {
-      data: posts,
+      data: posts,                              // Array of posts retrieved for the current page
       meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        page,                                   // Current page number
+        limit,                                  // Maximum number of posts per page
+        total,                                  // Total number of matching posts
+        totalPages: Math.ceil(total / limit),   // Total pages, rounded up to the next integer
       },
     };
   }
