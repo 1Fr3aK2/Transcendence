@@ -70,7 +70,7 @@ dashboard reloads.
 |------|---------|
 | `frontend/src/components/Analytics/AnalyticsDashboard.jsx` | The page at `#/analytics` (Analytics button in the navbar): filters (7 days, 30 days, all time, dates, coin, direction), 6 KPI tiles, 4 charts with data tables, latest bets, live indicator |
 | `frontend/src/components/Analytics/exporters.js` | CSV (the bets), JSON (everything shown) and PDF (an A4 text report written without a library) |
-| `frontend/src/components/Analytics/analytics.css` | Styles, including the phone layout |
+| `frontend/src/style.css` (section ANALYTICS DASHBOARD) and `frontend/src/responsive.css` | Styles, and the phone layout |
 | `frontend/src/api/analytics.js` | The request to this endpoint |
 
 ## Testing
