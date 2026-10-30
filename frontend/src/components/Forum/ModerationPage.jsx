@@ -220,6 +220,7 @@ function FlaggedCard({ item, note, onNoteChange, busy, onReview }) {
       <textarea
         className="report-note-input"
         placeholder="Note for the moderation log (optional)"
+        aria-label="Note for the moderation log (optional)"
         value={note}
         onChange={(e) => onNoteChange(e.target.value)}
         maxLength={500}
@@ -282,6 +283,7 @@ function ReportCard({ report, note, onNoteChange, busy, onResolve }) {
           <textarea
             className="report-note-input"
             placeholder="Note for the moderation log (optional)"
+            aria-label="Note for the moderation log (optional)"
             value={note}
             onChange={(e) => onNoteChange(e.target.value)}
             maxLength={500}
