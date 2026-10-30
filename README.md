@@ -19,13 +19,20 @@ default, deployed with a single command, and observable in production.
 ### Key features
 
 - **Accounts**: registration with username, email and password, login with
-  username and password (JWT sessions, bcrypt-hashed passwords), profile with
-  avatar, password change, and roles (user, moderator, administrator).
+  the username or the email and the password (JWT sessions, bcrypt-hashed
+  passwords), profile with avatar, password change, and roles (user,
+  moderator, administrator). Every form is validated in the browser and again
+  by the server.
 - **Live prices**: BTC and ETH prices from the Kraken WebSocket API, pushed to
-  every open browser in real time with Socket.IO, with a price chart.
-- **Server-side betting engine**: balance and bets stored in the database,
-  60-second bets settled by the server with live prices, safe when many users
-  bet at the same time.
+  every open browser in real time with Socket.IO, on a candlestick chart like
+  TradingView's (1 m, 5 m, 15 m and 1 h candles, zoom with the mouse wheel or a
+  pinch, drag to move). Each running bet of the player is drawn on the chart
+  at its entry price: a green line for UP, a red line for DOWN.
+- **Server-side betting engine**: only logged-in players can bet, and only
+  whole positive amounts. The server checks every bet, keeps the balance and
+  the bets in the database, settles each 60-second bet with the live price and
+  pays it; the page only shows the result, which arrives in real time. Safe
+  when many users bet at the same time.
 - **Forum**: posts and comments, search with filters, sorting and pagination,
   reports, rule-based automatic moderation and a moderation page.
 - **Administration**: user list and role management in the application, and a
@@ -123,6 +130,11 @@ sealed, and this unseals it before the backend starts.
 - `bash scripts/test-public-api.sh`: tests the public admin API (asks for the API key).
 - `bash scripts/test-bets.sh`: tests the betting engine end to end (about 75 seconds).
 - `bash scripts/test-analytics.sh`: tests the analytics endpoint and the real-time socket (about 10 seconds).
+- `bash scripts/test-users.sh`: tests the account rules: usernames, login with the email, and avatars (about 10 seconds).
+- `bash scripts/test-forum.sh`: tests that ordinary sentences pass the WAF in the forum while attacks are still refused, and the date filter (about 5 seconds).
+
+nginx allows 10 logins a minute per address, so leave a minute between two
+runs of these scripts.
 
 ## Team Information
 
@@ -134,7 +146,7 @@ sealed, and this unseals it before the backend starts.
 | Rafael Matos | `1Fr3aK2` | Technical Lead / Architect, Developer | Docker architecture, security (TLS, WAF, Vault), DevOps (ELK, Prometheus, Grafana, backups); reviews and merges pull requests |
 | Pedro Silva | `SuVao` | Developer (backend) | NestJS backend, authentication, users and roles, Kraken price feed |
 | Duarte Araujo | `dsteiger42` | Product Owner, Developer (frontend) | Product vision and priorities; React interface |
-| Miguel Dias | `migueldias2` | Developer | Server-side betting engine, project audit and fixes, legal pages, README |
+| Miguel Dias | `mcarepa-42` | Developer | Server-side betting engine and its connection to the betting screen, analytics dashboard, project audit and fixes, legal pages, README |
 
 ## Project Management
 
@@ -158,14 +170,14 @@ sealed, and this unseals it before the backend starts.
 
 | Layer | Technologies |
 |-------|--------------|
-| Frontend | React 18, Vite 5, Socket.IO client, Recharts, custom CSS stylesheet |
+| Frontend | React 18, Vite 5, Socket.IO client, TradingView Lightweight Charts (candlestick chart), Recharts (analytics charts), hand-written CSS in two stylesheets (`style.css` and `responsive.css`) |
 | Backend | NestJS 10 (TypeScript, Node.js 20), Prisma 6, Passport JWT, bcrypt, class-validator, Socket.IO, Swagger (OpenAPI), prom-client |
 | Database | PostgreSQL 16 (application data), Redis (rate-limit counters) |
 | Reverse proxy and security | nginx with ModSecurity and the OWASP Core Rule Set 4, HashiCorp Vault |
 | Logs | Elasticsearch, Logstash, Kibana 8.19, Filebeat |
 | Monitoring | Prometheus, Grafana, nginx / PostgreSQL / Redis exporters |
 | Deployment | Docker Compose, GNU make |
-| External APIs | Kraken WebSocket API v2 (live prices), CoinGecko (price history) |
+| External APIs | Kraken WebSocket API v2 (live prices), Kraken REST API (candles), CoinGecko (price history) |
 
 Why these choices:
 
@@ -181,6 +193,14 @@ Why these choices:
   TypeORM because its migrations are easier to manage with NestJS.
 - **Docker Compose** runs the whole platform (about twenty containers) with
   one command, the same way on every machine.
+- **Styling**: plain CSS, written by hand, in two stylesheets: `style.css` says
+  how every component looks, and `responsive.css` only adapts the layout to
+  phones and tablets. The team chose this over a CSS framework to keep one
+  consistent dark theme without extra dependencies; Vite bundles both files
+  into one at build time.
+- **TradingView Lightweight Charts** draws the candlestick chart: it is the
+  open-source library behind TradingView's charts (zoom, scrolling, price
+  lines), small and fast because it draws on a canvas.
 
 ## Database Schema
 
@@ -290,11 +310,12 @@ in `backend/prisma/migrations/`, applied automatically at startup.
 
 | Feature | Description | Member(s) |
 |---------|-------------|-----------|
-| Registration and login | Registration with username, email and password; login with username and password (JWT); brute-force protection (5 failed attempts per 30 minutes) | Pedro (backend), Duarte (frontend) |
-| Profile and settings | Change username, avatar and password | Pedro, Duarte |
+| Registration and login | Registration with username, email and password; login with the username or the email (JWT); usernames of 3 to 20 letters, digits, `_`, `.` or `-`; brute-force protection (5 failed attempts per 30 minutes) | Pedro (backend), Duarte (frontend), Miguel (login with the email, username rules) |
+| Profile and settings | Change username, avatar and password; pictures of up to 10 MB are shrunk to 256 x 256 in the browser before being sent | Pedro, Duarte, Miguel (avatar checks) |
 | Roles and administration | Roles user / moderator / administrator; admin page to list users and change roles | Pedro, Duarte |
-| Live prices | BTC and ETH from the Kraken WebSocket API, broadcast to every browser with Socket.IO; price chart | Pedro (backend), Duarte (frontend) |
-| Betting engine | Balance and bets in the database; 60-second bets settled by the server with live prices; atomic balance updates; history | Miguel (backend), Duarte (frontend) |
+| Live prices | BTC and ETH from the Kraken WebSocket API, broadcast to every browser with Socket.IO | Pedro (backend), Duarte (frontend) |
+| Candlestick chart | TradingView-style chart: candles from Kraken (`GET /crypto/:coin/candles`), 1 m to 1 h candles, zoom and scrolling, live last candle, and a green (UP) or red (DOWN) line at the entry price of each running bet | Miguel |
+| Betting engine | Only logged-in players can bet, and only whole positive amounts; balance and bets in the database; 60-second bets settled by the server with live prices; atomic balance updates; results and balance pushed to the page in real time; history | Miguel (backend and its connection to the betting screen), Duarte (betting screen) |
 | Analytics dashboard | Cumulative profit, profit by day, results, and win rate by coin and direction; filters by period, coin and direction; live updates through a per-user socket; CSV, JSON and PDF export | Miguel |
 | Forum | Posts, comments, editing and deleting your own content, search with filters, sorting and pagination | Hugo (backend), Duarte (frontend) |
 | Moderation | Reports, rule-based automatic moderation (scam, spam and abuse patterns), moderators' review of reports and held content, moderation log | Hugo (backend), Duarte (frontend) |
@@ -306,6 +327,7 @@ in `backend/prisma/migrations/`, applied automatically at startup.
 | Monitoring | Prometheus, exporters, Grafana dashboard, alert rules | Rafael, Miguel |
 | Health and backups | Health checks, status page, daily PostgreSQL backups kept 7 days, disaster recovery procedure | Rafael |
 | Legal pages | Privacy Policy and Terms of Service written for the application, linked from the footer | Miguel |
+| Responsive layout and accessibility | Every page works on phones (390 px) and tablets; labelled form fields; no errors or warnings in the browser console | Duarte (design), Miguel (phone and tablet rules, labels) |
 
 ## Modules
 
@@ -327,11 +349,9 @@ in `backend/prisma/migrations/`, applied automatically at startup.
 
 The minimum is 14 points; the 3 extra points count as bonus (at most 5). Not claimed because
 they are not complete: user interaction (needs chat and friends), standard user
-management (needs friends and online status), advanced permissions (needs user
-deletion), languages, additional browsers, and content moderation AI (our
-moderation is rule-based, not AI).
-
-<!-- TODO(team): when deleting users works, add "Advanced permissions system" (User Management, Major, 2 points: Pedro, Duarte). -->
+management (needs friends and online status), advanced permissions (the team
+decided not to add user deletion), languages, additional browsers, and content
+moderation AI (our moderation is rule-based, not AI).
 
 ### Why we chose each module and how it is implemented
 
@@ -420,11 +440,15 @@ moderation is rule-based, not AI).
 - **Analytics dashboard** (module Data and Analytics, Major): `GET /users/me/analytics`, the `/bets` real-time socket, and the dashboard page with 4 charts, filters, live updates and CSV, JSON and PDF export; `scripts/test-analytics.sh`.
 - **Project audit** against the subject, and fixes for the problems that would have failed the evaluation: Filebeat not starting on hosts with umask 002, Kibana not starting with the `.env.example` values, and Grafana panels and Prometheus queries blocked by the WAF.
 - **Privacy Policy and Terms of Service** pages and the footer.
+- **Candlestick chart** like TradingView's, with TradingView Lightweight Charts: candles from Kraken through `GET /crypto/:coin/candles` (`backend/src/candles`), zoom, candle sizes, and a green or red line at the entry price of each running bet.
+- **Final version**: connected the betting screen to the server (login required, whole positive amounts only, results in real time, live 24 h price statistics), login with the email, username and avatar checks in the browser and the server, phone and tablet layout, form labels, favicon and a clean browser console; `scripts/test-users.sh`.
 - **This README**.
 - Challenges:
   - My first pull request bundled too many changes across other members' areas and had to be reverted. I then split my work into small, focused pull requests and announced every change outside my area.
   - Two users betting at the same time could overdraw a balance if it was read first and written later. The stake is now debited with one conditional `UPDATE ... WHERE wallet >= amount`, which PostgreSQL runs atomically.
   - PromQL operators looked like SQL injection to the WAF. Instead of switching rules off everywhere, the exclusion only covers the query fields of the two read-only monitoring endpoints.
+  - The WAF refused 40 of 91 ordinary forum texts, such as "Find the best strategy" or "Top 3 tips": sentences starting with a word that is also a Unix command read like command injection. The command and SQL injection rules no longer inspect the forum's text fields (the backend runs no shell and Prisma sends text as parameters), while the XSS rules still do; afterwards, 0 of 91 were refused and the attack payloads still were.
+  - One avatar in five was refused by the WAF, because random base64 text looks like SQL to it. Sending hundreds of random pictures showed that the SQL rules, and rarely the XSS ones, were involved, so the SQL, XSS and command-injection rules no longer inspect the avatar field alone, and the server now accepts nothing but an image in that field (300 random pictures out of 300 pass).
 
 ## Resources
 
@@ -435,6 +459,8 @@ moderation is rule-based, not AI).
 - React: https://react.dev; Vite: https://vite.dev/guide
 - Socket.IO: https://socket.io/docs/v4
 - Recharts: https://recharts.org
+- TradingView Lightweight Charts: https://tradingview.github.io/lightweight-charts/ (see Credits below)
+- Kraken REST API, OHLC data: https://docs.kraken.com/api/docs/rest-api/get-ohlc-data
 - Kraken WebSocket API v2: https://docs.kraken.com/api/docs/websocket-v2/ticker
 - CoinGecko API: https://docs.coingecko.com
 - PostgreSQL: https://www.postgresql.org/docs/16/
@@ -455,8 +481,9 @@ moderation is rule-based, not AI).
   adjusted.
 - **Miguel** used Claude (Anthropic) through Claude Code to audit the project
   against the subject, to write and test the betting engine and its test
-  script, to find and fix the ELK, `.env` and WAF problems, and to draft the
-  legal pages and this README. Every change was reviewed, run and tested on
+  script, to find and fix the ELK, `.env` and WAF problems, to connect the
+  betting screen to the server and make the layout work on phones, to build
+  the candlestick chart, and to draft the legal pages and this README. Every change was reviewed, run and tested on
   the real stack, and Miguel can explain and modify it.
 
 ## Known limitations
@@ -474,4 +501,12 @@ moderation is rule-based, not AI).
 - After a reboot, run `make down` and then `make`, so that Vault is unsealed
   before the backend starts.
 
-<!-- TODO(team): update this list before the evaluation (frontend production build, responsive layout, console messages). -->
+<!-- TODO(team): update this list before the evaluation (frontend production build). -->
+
+## Credits
+
+- Candlestick chart: **TradingView Lightweight Charts™**, Copyright (c) 2025
+  TradingView, Inc., https://www.tradingview.com/, used under the Apache
+  License 2.0. The TradingView logo on the chart links to their website, as the
+  license asks.
+- Prices: Kraken (live prices and candles) and CoinGecko (price history).
