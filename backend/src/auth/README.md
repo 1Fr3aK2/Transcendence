@@ -173,10 +173,15 @@ Example:
 curl -X POST http://localhost:8000/auth/login \
 -H "Content-Type: application/json" \
 -d '{
-  "email":"pedro@test.com",
+  "username":"pedro",
   "password":"12345678"
 }'
 ```
+
+The `username` field also accepts the email (`"username":"pedro@test.com"`):
+`AuthService.login()` looks the user up by username first and, when nothing
+matches and the value contains `@`, by email. Usernames cannot contain `@`
+(`users/user-rules.ts`), so an email never matches someone else's username.
 
 Response:
 
@@ -190,7 +195,7 @@ The token must be used to access protected routes.
 
 > **Confirms the field used by the per-account rate limiter**: the Redis
 > key built in `AuthService.login()` for brute-force protection is keyed on
-> this `email` field (`login_attempts:${dto.email}`) — see
+> this `username` field (`login_attempts:${dto.username}`) — see
 > `RATE_LIMITING.md` / `AUTH_HARDENING_REPORT.md` for the full rate limiting
 > design built on top of this endpoint.
 
