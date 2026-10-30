@@ -6,7 +6,8 @@
 # Creates two users and checks the betting engine (backend/src/bets)
 # through nginx, the same way the browser uses it:
 #   - new accounts start with 1000 T$, set by the server
-#   - invalid bets are refused
+#   - betting needs a valid login token
+#   - invalid bets are refused: the amount must be a positive whole number
 #   - the balance never goes below zero, even with simultaneous bets
 #   - bet history and its filters
 #   - a bet settled too late is refunded (needs docker)
@@ -114,12 +115,25 @@ check "GET /users/me/balance -> 200" 200 "$CODE"
 check "  balance" 1000 "$(field balance)"
 call GET /users/me/balance
 check "without a token -> 401" 401 "$CODE"
+call POST /users/me/bets "" '{"coin":"BTC","direction":"up","amount":100}'
+check "betting without a token -> 401" 401 "$CODE"
+call POST /users/me/bets "not-a-real-token" '{"coin":"BTC","direction":"up","amount":100}'
+check "betting with a fake token -> 401" 401 "$CODE"
 
-echo "== Invalid bets are refused with 400"
+echo "== Invalid bets are refused with 400 (the amount must be a positive whole number)"
 for body in \
   '{"coin":"BTC","direction":"up","amount":0}' \
+  '{"coin":"BTC","direction":"up","amount":-50}' \
   '{"coin":"BTC","direction":"up","amount":1.5}' \
   '{"coin":"BTC","direction":"up","amount":"100"}' \
+  '{"coin":"BTC","direction":"up","amount":"abc"}' \
+  '{"coin":"BTC","direction":"up","amount":"10abc"}' \
+  '{"coin":"BTC","direction":"up","amount":""}' \
+  '{"coin":"BTC","direction":"up","amount":null}' \
+  '{"coin":"BTC","direction":"up","amount":true}' \
+  '{"coin":"BTC","direction":"up","amount":[100]}' \
+  '{"coin":"BTC","direction":"up","amount":10000000}' \
+  '{"coin":"BTC","direction":"up"}' \
   '{"coin":"BTC","direction":"sideways","amount":100}' \
   '{"coin":"B1","direction":"up","amount":100}' \
   '{"coin":"BTC","direction":"up","amount":100,"price":1}' \

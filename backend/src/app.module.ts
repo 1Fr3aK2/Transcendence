@@ -11,6 +11,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PublicApiModule } from './public-api/public-api.module';
 import { BetsModule } from './bets/bets.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { CandlesModule } from './candles/candles.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     PublicApiModule,
     BetsModule,
     AnalyticsModule,
+    CandlesModule,
   ],
   controllers: [],
   providers: [],
