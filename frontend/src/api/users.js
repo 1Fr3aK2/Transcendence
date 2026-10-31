@@ -50,16 +50,39 @@ export async function getMe(token) {
   return response.json();
 }
 
+// Picture types the server accepts as an avatar (backend/src/users/user-rules.ts).
+export const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+// Shrinks the picture to at most 256 x 256 and encodes it as a JPEG data URL.
+// A phone photo of several MB becomes a few tens of KB, small enough for the
+// server, which refuses requests above 100 KB.
+async function toAvatarDataUrl(file) {
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 256 / Math.max(image.width, image.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#ffffff'; // JPEG has no transparency
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  // Lower the quality until it fits: busy pictures compress less.
+  for (const quality of [0.85, 0.7, 0.5, 0.3]) {
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    if (dataUrl.length <= 90000) return dataUrl;
+  }
+  return canvas.toDataURL('image/jpeg', 0.1);
+}
+
 // PATCH /users/me -> updates username and/or avatar, returns the updated user
 export async function updateUser({ username, avatarFile }) {
   let avatar;
   if (avatarFile) {
-    avatar = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result); // base64 data URL
-      reader.onerror = reject;
-      reader.readAsDataURL(avatarFile);
-    });
+    try {
+      avatar = await toAvatarDataUrl(avatarFile); // base64 data URL
+    } catch {
+      throw new Error('This picture could not be read, please choose another one');
+    }
   }
 
   const response = await fetch(`${API_URL}/users/me`, {

@@ -144,18 +144,27 @@ An array of bet objects (same shape as above). A settled bet has `status`
 | `expiresAt`  | when the bet ends (placement + 60 s) |
 | `settledAt`  | when the server settled it (at most about 1 s after `expiresAt`) |
 
-## Frontend integration notes
+## Frontend
 
-- Show the balance from `GET /users/me/balance`, or from the `balance`
-  returned by `POST /users/me/bets`, instead of the local value of 1000.
-- Each bet lasts 60 s from the moment it is placed: there are no rounds and
-  no queued bets on the server. A countdown can use `expiresAt`.
-- About 1–2 s after `expiresAt`, read `GET /users/me/bets?status=settled` and
-  the balance to show the result, or wait for `bets:changed` on the socket
-  below.
+The betting screen uses this module through `frontend/src/api/bets.js` (the
+requests) and `frontend/src/hooks/useBets.js` (the balance, the bets and the
+socket below). The browser only shows what the server decided:
+
+- Guests see the prices but cannot bet: the bet controls are disabled and the
+  forum and settings buttons open the login. The server refuses any bet
+  without a valid token (`401`).
+- The amount field accepts digits only, and the browser shows the same limits
+  as the server (`1` to `1 000 000`, not above the balance) before anything is
+  sent. The server checks them again (`400`).
+- Each bet lasts 60 s from the moment it is placed: there are no rounds. The
+  countdown under the price and on each active bet uses `expiresAt`.
+- The candlestick chart draws each running bet as a line at its `entryPrice`:
+  green for `up`, red for `down`. The line goes away when the bet is settled.
+- When a bet is placed or settled, `bets:changed` arrives on the socket below,
+  and the page reloads the balance, the active bets and the 8 latest results,
+  then shows the result in a toast.
 - Only `BTC` and `ETH` have live prices.
-- The registration form can keep sending `wallet`: it is ignored.
-- For errors, show the `message` of the `400` response.
+- The registration form still sends `wallet: 0`: it is ignored.
 
 ## Real-time channel
 
@@ -163,7 +172,8 @@ An array of bet objects (same shape as above). A settled bet has `status`
 login token, `io('/bets', { auth: { token } })`; a missing or invalid token is
 disconnected. Each socket joins a room of its own user, and when one of that
 user's bets is placed or settled the server emits `bets:changed` to that room
-only. The analytics dashboard uses it to reload by itself.
+only. The betting screen and the analytics dashboard use it to reload by
+themselves.
 
 ## Testing
 

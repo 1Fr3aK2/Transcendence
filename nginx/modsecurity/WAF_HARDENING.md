@@ -43,6 +43,7 @@ volumes:
 | `1000001` | Base64 avatar exclusion (`PATCH /users/me`)          |
 | `1000002` | PromQL exclusion for Grafana (`POST /grafana/api/ds/query`) |
 | `1000003` | PromQL exclusion for Prometheus (`/prometheus/api/v1/`) |
+| `1000004` | Forum text fields exclusion (`/forum/`)              |
 
 ## `before-crs.conf` — allowing REST methods
 
@@ -87,13 +88,34 @@ SecRule REQUEST_METHOD "@streq PATCH" \
     ctl:ruleRemoveTargetById=941170;ARGS:json.avatar,\
     ctl:ruleRemoveTargetById=932235;ARGS:json.avatar,\
     ctl:ruleRemoveTargetById=932236;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=932260;ARGS:json.avatar"
+    ctl:ruleRemoveTargetById=932260;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.avatar"
 ```
 
 A base64 data URL (`data:image/...;base64,...`) sent during profile updates
 trips several CRS rules detecting PHP injection (`934170`), XSS data
 attributes (`941130`, `941170`), and Unix command injection (`932235`,
 `932236`, `932260`).
+
+**v3 (final version):** the SQL-injection rules (tag `attack-sqli`, `942xxx`)
+are also removed for `ARGS:json.avatar`. Random base64 text keeps matching
+them: the `==` padding is read as an SQL operator (`942120`), and `+` (a space
+once decoded) next to `OR` looks like an authentication bypass (`942340`,
+`942200`, `942450`, `942210`, `942390`). Out of 200 random pictures sent before
+this change, 40 were refused with `403`; after it, none. A later run of 30
+showed that the XSS rules can match random base64 too (`941150` read `SRC`
+followed by a `+` as an HTML attribute), so the XSS and command-injection groups
+(tags `attack-xss`, `attack-rce`) are removed for this field as well: 300
+random pictures then all passed. Removing whole groups instead of one id at a
+time stops the whack-a-mole, as for the PromQL fields (see the next section).
+It is safe because the backend accepts in this field only a PNG, JPEG, GIF or
+WebP data URL made of base64 characters, at most 100 000 long
+(`backend/src/users/user-rules.ts`), never builds SQL or runs anything from it,
+and React only shows it in an `<img>`. A script or HTML payload in this field is
+now refused by the backend (`400`) instead of the WAF. This exclusion touches no
+other field or route.
 
 **v2:** the original version of this exclusion used
 `ctl:ruleRemoveById`, which disables the listed rules for the *entire*
@@ -123,8 +145,9 @@ No MIME-type validation is performed by this exclusion — it only stops the
 WAF from flagging base64 noise as an attack. A `data:text/html;...` payload
 sent as the `avatar` field itself still passes the WAF unblocked by design
 (it's still base64-encoded "noise" to these rules). The application layer
-is expected to validate that `avatar` is actually image data — not yet
-implemented as of this revision.
+validates that `avatar` is actually image data: since the final version,
+`backend/src/users/user-rules.ts` accepts only PNG, JPEG, GIF or WebP data
+URLs made of base64 characters, and refuses everything else with `400`.
 
 ## `before-crs.conf` — PromQL for the monitoring endpoints
 
@@ -199,6 +222,53 @@ Things worth knowing if this is touched again:
   `/prometheus/api/v1/`; this is intentional, since the Prometheus query API
   accepts both `GET` and `POST`.
 
+## `before-crs.conf` — ordinary sentences in the forum
+
+```apache
+SecRule REQUEST_URI "@beginsWith /forum/" \
+  "id:1000004,\
+  phase:1,\
+  nolog,\
+  pass,\
+  t:none,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.title,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.content,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.reason,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.note,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:search,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.title,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.content,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.reason,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.note,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:search"
+```
+
+Posts, comments, reports, moderation notes and the search box hold ordinary
+sentences, and at paranoia level 2 ordinary sentences keep tripping the
+command-injection and SQL-injection rules:
+
+- a sentence that starts with a word that is also a Unix command ("Find the
+  best strategy", "Top 3 tips", "Watch the ETH price") matches `932236` or
+  `932260`
+- a comparison such as "Patience > luck" or "if (price > yesterday)" matches
+  SQL-injection rules
+
+Without this exclusion, 40 of 91 ordinary forum texts (posts, comments,
+reports and searches) were refused with `403`; with it, none. The fields are
+`json.title` and `json.content` (posts and comments), `json.reason` (reports),
+`json.note` (moderator notes) and `search` (the search box).
+
+What keeps this safe:
+
+- **Field-scoped, not request-scoped**, as for PromQL: the forum's other
+  parameters (`page`, `sortBy`, `authorId`, ...) and every other route keep
+  every rule.
+- **XSS and all other rule groups still inspect these fields.** `<script>`,
+  `onerror=` and `javascript:` payloads are still refused with `403`.
+- **These fields are only stored, searched and shown.** The backend runs no
+  shell, Prisma sends them to PostgreSQL as query parameters, and React
+  escapes them on display.
+
 ## `exclusions.conf` — Vite dev server false positive
 
 ```apache
@@ -238,6 +308,13 @@ to end, not assumed:
 - Grafana dashboards: before the PromQL exclusion, 4 of the 12 panels
   returned `403` ("No data"); the PromQL exclusion exists to fix exactly
   these.
+- Avatar uploads: before v3, 40 of 200 random pictures were refused with
+  `403`; after it, 300 random pictures all passed, and a script or HTML
+  payload in `avatar` is refused by the backend (`400`).
+- Forum texts: before rule `1000004`, 40 of 91 ordinary texts (posts,
+  comments, reports and searches) were refused with `403`; after it, none.
+  `<script>` and `onerror=` in the same fields, and SQL injection in `page`,
+  are still `403`.
 
 ## How to test
 
@@ -276,6 +353,8 @@ to end, not assumed:
      -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
      -d '{"username":"data:text/html;base64,PHNjcmlwdD4="}'
    ```
+   `bash scripts/test-users.sh` also sends 30 random pictures of different
+   sizes, which must all be accepted.
 6. If touching the PromQL exclusions, confirm both sides again — the
    legitimate query must pass, and the same kind of payload outside the
    excluded field (or XSS inside it) must still be blocked:
@@ -293,6 +372,9 @@ to end, not assumed:
      --data-urlencode "other=' OR 1=1 --"
    ```
    Then open the Grafana dashboards and confirm all 12 panels load data.
+7. If touching the forum exclusion, run `bash scripts/test-forum.sh`:
+   ordinary sentences must pass in posts, comments and the search box, while
+   `<script>`, `onerror=` and SQL injection in `page` must still return `403`.
 
 ## Status
 
@@ -313,6 +395,9 @@ to end, not assumed:
 - [ ] Confirm the negative cases for the PromQL exclusions (XSS in `query`
       still `403`, other fields still inspected) and that all 12 Grafana
       panels load
-- [ ] Avatar field still has no application-level MIME-type/size validation
-      (WAF exclusion only prevents false positives, not misuse) — tracked
-      separately, not yet implemented
+- [x] Avatar field validated by the backend (PNG, JPEG, GIF or WebP data
+      URL, at most 100 000 characters: `backend/src/users/user-rules.ts`)
+- [x] Avatar exclusion extended (v3) to the `attack-sqli`, `attack-xss` and
+      `attack-rce` groups, for `ARGS:json.avatar` only
+- [x] Forum exclusion added (`1000004`), scoped by tag to the forum's text
+      fields only

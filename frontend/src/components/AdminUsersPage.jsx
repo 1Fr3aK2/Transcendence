@@ -70,12 +70,14 @@ export default function AdminUsersPage({ token, currentUser, onClose }) {
             className="forum-search"
             type="text"
             placeholder="Search by username or email..."
+            aria-label="Search users by username or email"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <select
             className="forum-select"
             value={roleFilter}
+            aria-label="Filter by role"
             onChange={(e) => setRoleFilter(e.target.value)}
           >
             <option value="ALL">All roles</option>

@@ -6,7 +6,6 @@ import {
 } from 'recharts';
 import { getAnalytics } from '../../api/analytics';
 import { betsToCsv, download, fmt, price, reportLines, signed, textToPdf } from './exporters';
-import './analytics.css';
 
 // Analytics dashboard of the logged-in user's bets, opened at #/analytics by
 // the Analytics button of the navbar. It is rendered next to <App /> in

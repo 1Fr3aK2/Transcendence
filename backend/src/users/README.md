@@ -28,11 +28,11 @@ restricted to admins; users can only modify their own profile and password.
 
 | Field      | Type   | Constraints                   |
 |------------|--------|-------------------------------|
-| `username` | string | required                      |
+| `username` | string | required, 3 to 20 letters, digits, `_`, `.` or `-` (no `@`, see `user-rules.ts`) |
 | `email`    | string | required, valid email format  |
 | `password` | string | required, ≥ 8 characters      |
 | `wallet`   | number | optional, ignored: new accounts always start with 1000 (set by the server) |
-| `avatar`   | string | optional                      |
+| `avatar`   | string | optional, PNG/JPEG/GIF/WebP image as a data URL, ≤ 100 000 characters |
 
 Password is hashed with **bcrypt** (10 rounds) before storage.
 
@@ -137,8 +137,8 @@ Allows a user to change their own `username` and/or `avatar`.
 
 | Field      | Type   | Constraints                |
 |------------|--------|----------------------------|
-| `username` | string | optional, ≥ 3 characters   |
-| `avatar`   | string | optional                   |
+| `username` | string | optional, same rule as in `CreateUserDto` |
+| `avatar`   | string | optional, same rule as in `CreateUserDto` (the frontend resizes the picture to 256 x 256 first) |
 
 #### Response `200`
 

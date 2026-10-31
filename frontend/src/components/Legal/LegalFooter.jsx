@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import PrivacyPolicy from './PrivacyPolicy';
 import TermsOfService from './TermsOfService';
-import './legal.css';
 
 // Footer with the links to the legal pages. The open page follows the URL
 // hash (#/privacy, #/terms): each page has its own link, the browser's back
